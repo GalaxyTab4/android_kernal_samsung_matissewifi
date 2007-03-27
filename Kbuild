@@ -1,10 +1,8 @@
 #
 # Kbuild for top-level directory of the kernel
 # This file takes care of the following:
-# 1) Generate bounds.h
-# 2) Generate asm-offsets.h (may need bounds.h)
-# 3) Check for missing system calls
-
+# 1) Generate asm-offsets.h
+# 2) Check for missing system calls
 #####
 # 1) Generate bounds.h
 
@@ -99,3 +97,12 @@ missing-syscalls: scripts/checksyscalls.sh $(offsets-file) FORCE
 
 # Keep these two files during make clean
 no-clean-files := $(bounds-file) $(offsets-file)
+# 2) Check for missing system calls
+#
+
+quiet_cmd_syscalls = CALL    $<
+      cmd_syscalls = $(CONFIG_SHELL) $< $(CC) $(c_flags)
+
+PHONY += missing-syscalls
+missing-syscalls: scripts/checksyscalls.sh FORCE
+	$(call cmd,syscalls)
