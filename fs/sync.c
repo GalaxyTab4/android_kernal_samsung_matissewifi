@@ -327,7 +327,29 @@ SYSCALL_DEFINE(sync_file_range)(int fd, loff_t offset, loff_t nbytes,
 			!S_ISLNK(i_mode))
 		goto out_put;
 
-	mapping = file->f_mapping;
+	ret = do_sync_mapping_range(file->f_mapping, offset, endbyte, flags);
+out_put:
+	fput_light(file, fput_needed);
+out:
+	return ret;
+}
+
+/* It would be nice if people remember that not all the world's an i386
+   when they introduce new system calls */
+asmlinkage long sys_sync_file_range2(int fd, unsigned int flags,
+				     loff_t offset, loff_t nbytes)
+{
+	return sys_sync_file_range(fd, offset, nbytes, flags);
+}
+
+/*
+ * `endbyte' is inclusive
+ */
+int do_sync_mapping_range(struct address_space *mapping, loff_t offset,
+			  loff_t endbyte, unsigned int flags)
+{
+	int ret;
+
 	if (!mapping) {
 		ret = -EINVAL;
 		goto out_put;
