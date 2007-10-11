@@ -41,7 +41,11 @@ $(obj)/$(bounds-file): kernel/bounds.s Kbuild
 # 2) Generate asm-offsets.h
 #
 
+<<<<<<< HEAD
 offsets-file := include/generated/asm-offsets.h
+=======
+offsets-file := include/asm-$(SRCARCH)/asm-offsets.h
+>>>>>>> 96a388d... i386/x86_64: move headers to include/asm-x86
 
 always  += $(offsets-file)
 targets += $(offsets-file)

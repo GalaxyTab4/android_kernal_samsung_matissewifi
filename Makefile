@@ -984,6 +984,11 @@ ifneq ($(KBUILD_SRC),)
 		echo "  in the '$(srctree)' directory.";\
 		/bin/false; \
 	fi;
+<<<<<<< HEAD
+=======
+	$(Q)if [ ! -d include2 ]; then mkdir -p include2; fi;
+	$(Q)ln -fsn $(srctree)/include/asm-$(SRCARCH) include2/asm
+>>>>>>> 96a388d... i386/x86_64: move headers to include/asm-x86
 endif
 
 # prepare2 creates a makefile if using a separate output directory
@@ -1002,6 +1007,23 @@ prepare0: archprepare FORCE
 # All the preparing..
 prepare: prepare0
 
+<<<<<<< HEAD
+=======
+# Leave this as default for preprocessing vmlinux.lds.S, which is now
+# done in arch/$(ARCH)/kernel/Makefile
+
+export CPPFLAGS_vmlinux.lds += -P -C -U$(ARCH)
+
+# FIXME: The asm symlink changes when $(ARCH) changes. That's
+# hard to detect, but I suppose "make mrproper" is a good idea
+# before switching between archs anyway.
+
+include/asm:
+	@echo '  SYMLINK $@ -> include/asm-$(SRCARCH)'
+	$(Q)if [ ! -d include ]; then mkdir -p include; fi;
+	@ln -fsn asm-$(SRCARCH) $@
+
+>>>>>>> 96a388d... i386/x86_64: move headers to include/asm-x86
 # Generate some files
 # ---------------------------------------------------------------------------
 
@@ -1053,6 +1075,7 @@ firmware_install: FORCE
 # ---------------------------------------------------------------------------
 # Kernel headers
 
+<<<<<<< HEAD
 #Default location for installed headers
 export INSTALL_HDR_PATH = $(objtree)/usr
 
@@ -1070,17 +1093,30 @@ archscripts:
 PHONY += __headers
 __headers: include/linux/version.h scripts_basic asm-generic archheaders archscripts FORCE
 	$(Q)$(MAKE) $(build)=scripts build_unifdef
+=======
+HDRFILTER=generic i386 x86_64
+HDRARCHES=$(filter-out $(HDRFILTER),$(patsubst $(srctree)/include/asm-%/Kbuild,%,$(wildcard $(srctree)/include/asm-*/Kbuild)))
+>>>>>>> 96a388d... i386/x86_64: move headers to include/asm-x86
 
 PHONY += headers_install_all
 headers_install_all:
 	$(Q)$(CONFIG_SHELL) $(srctree)/scripts/headers.sh install
 
 PHONY += headers_install
+<<<<<<< HEAD
 headers_install: __headers
 	$(if $(wildcard $(srctree)/arch/$(hdr-arch)/include/asm/Kbuild),, \
 	$(error Headers not exportable for the $(SRCARCH) architecture))
 	$(Q)$(MAKE) $(hdr-inst)=include
 	$(Q)$(MAKE) $(hdr-inst)=arch/$(hdr-arch)/include/asm $(hdr-dst)
+=======
+headers_install: include/linux/version.h scripts_basic FORCE
+	@if [ ! -r $(srctree)/include/asm-$(SRCARCH)/Kbuild ]; then \
+	  echo '*** Error: Headers not exportable for this architecture ($(SRCARCH))'; \
+	  exit 1 ; fi
+	$(Q)$(MAKE) $(build)=scripts scripts/unifdef
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.headersinst ARCH=$(SRCARCH) obj=include
+>>>>>>> 96a388d... i386/x86_64: move headers to include/asm-x86
 
 PHONY += headers_check_all
 headers_check_all: headers_install_all
@@ -1088,8 +1124,12 @@ headers_check_all: headers_install_all
 
 PHONY += headers_check
 headers_check: headers_install
+<<<<<<< HEAD
 	$(Q)$(MAKE) $(hdr-inst)=include HDRCHECK=1
 	$(Q)$(MAKE) $(hdr-inst)=arch/$(hdr-arch)/include/asm $(hdr-dst) HDRCHECK=1
+=======
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.headersinst ARCH=$(SRCARCH) obj=include HDRCHECK=1
+>>>>>>> 96a388d... i386/x86_64: move headers to include/asm-x86
 
 # ---------------------------------------------------------------------------
 # Modules
