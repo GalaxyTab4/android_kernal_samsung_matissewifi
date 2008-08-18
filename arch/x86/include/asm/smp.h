@@ -1,7 +1,8 @@
-#ifndef _ASM_X86_SMP_H
-#define _ASM_X86_SMP_H
+#ifndef ASM_X86__SMP_H
+#define ASM_X86__SMP_H
 #ifndef __ASSEMBLY__
 #include <linux/cpumask.h>
+#include <linux/init.h>
 #include <asm/percpu.h>
 
 /*
@@ -14,59 +15,52 @@
 #  include <asm/io_apic.h>
 # endif
 #endif
+#include <asm/pda.h>
 #include <asm/thread_info.h>
-#include <asm/cpumask.h>
-#include <asm/cpufeature.h>
+
+extern cpumask_t cpu_callout_map;
+extern cpumask_t cpu_initialized;
+extern cpumask_t cpu_callin_map;
+
+extern void (*mtrr_hook)(void);
+extern void zap_low_mappings(void);
+
+extern int __cpuinit get_local_pda(int cpu);
 
 extern int smp_num_siblings;
 extern unsigned int num_processors;
+extern cpumask_t cpu_initialized;
 
-static inline bool cpu_has_ht_siblings(void)
-{
-	bool has_siblings = false;
-#ifdef CONFIG_SMP
-	has_siblings = cpu_has_ht && smp_num_siblings > 1;
+DECLARE_PER_CPU(cpumask_t, cpu_sibling_map);
+DECLARE_PER_CPU(cpumask_t, cpu_core_map);
+DECLARE_PER_CPU(u16, cpu_llc_id);
+#ifdef CONFIG_X86_32
+DECLARE_PER_CPU(int, cpu_number);
 #endif
-	return has_siblings;
-}
 
-DECLARE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_sibling_map);
-DECLARE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_core_map);
-/* cpus sharing the last level cache: */
-DECLARE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_llc_shared_map);
-DECLARE_PER_CPU_READ_MOSTLY(u16, cpu_llc_id);
-DECLARE_PER_CPU_READ_MOSTLY(int, cpu_number);
-
-static inline struct cpumask *cpu_llc_shared_mask(int cpu)
-{
-	return per_cpu(cpu_llc_shared_map, cpu);
-}
-
-DECLARE_EARLY_PER_CPU_READ_MOSTLY(u16, x86_cpu_to_apicid);
-DECLARE_EARLY_PER_CPU_READ_MOSTLY(u16, x86_bios_cpu_apicid);
-#if defined(CONFIG_X86_LOCAL_APIC) && defined(CONFIG_X86_32)
-DECLARE_EARLY_PER_CPU_READ_MOSTLY(int, x86_cpu_to_logical_apicid);
-#endif
+DECLARE_EARLY_PER_CPU(u16, x86_cpu_to_apicid);
+DECLARE_EARLY_PER_CPU(u16, x86_bios_cpu_apicid);
 
 /* Static state in head.S used to set up a CPU */
-extern unsigned long stack_start; /* Initial stack pointer address */
-
-struct task_struct;
+extern struct {
+	void *sp;
+	unsigned short ss;
+} stack_start;
 
 struct smp_ops {
 	void (*smp_prepare_boot_cpu)(void);
 	void (*smp_prepare_cpus)(unsigned max_cpus);
 	void (*smp_cpus_done)(unsigned max_cpus);
 
-	void (*stop_other_cpus)(int wait);
+	void (*smp_send_stop)(void);
 	void (*smp_send_reschedule)(int cpu);
 
-	int (*cpu_up)(unsigned cpu, struct task_struct *tidle);
+	int (*cpu_up)(unsigned cpu);
 	int (*cpu_disable)(void);
 	void (*cpu_die)(unsigned int cpu);
 	void (*play_dead)(void);
 
-	void (*send_call_func_ipi)(const struct cpumask *mask);
+	void (*send_call_func_ipi)(cpumask_t mask);
 	void (*send_call_func_single_ipi)(int cpu);
 };
 
@@ -81,12 +75,7 @@ extern struct smp_ops smp_ops;
 
 static inline void smp_send_stop(void)
 {
-	smp_ops.stop_other_cpus(0);
-}
-
-static inline void stop_other_cpus(void)
-{
-	smp_ops.stop_other_cpus(1);
+	smp_ops.smp_send_stop();
 }
 
 static inline void smp_prepare_boot_cpu(void)
@@ -104,9 +93,9 @@ static inline void smp_cpus_done(unsigned int max_cpus)
 	smp_ops.smp_cpus_done(max_cpus);
 }
 
-static inline int __cpu_up(unsigned int cpu, struct task_struct *tidle)
+static inline int __cpu_up(unsigned int cpu)
 {
-	return smp_ops.cpu_up(cpu, tidle);
+	return smp_ops.cpu_up(cpu);
 }
 
 static inline int __cpu_disable(void)
@@ -134,7 +123,7 @@ static inline void arch_send_call_function_single_ipi(int cpu)
 	smp_ops.send_call_func_single_ipi(cpu);
 }
 
-static inline void arch_send_call_function_ipi_mask(const struct cpumask *mask)
+static inline void arch_send_call_function_ipi(cpumask_t mask)
 {
 	smp_ops.send_call_func_ipi(mask);
 }
@@ -143,34 +132,32 @@ void cpu_disable_common(void);
 void native_smp_prepare_boot_cpu(void);
 void native_smp_prepare_cpus(unsigned int max_cpus);
 void native_smp_cpus_done(unsigned int max_cpus);
-void common_cpu_up(unsigned int cpunum, struct task_struct *tidle);
-int native_cpu_up(unsigned int cpunum, struct task_struct *tidle);
+int native_cpu_up(unsigned int cpunum);
 int native_cpu_disable(void);
-int common_cpu_die(unsigned int cpu);
 void native_cpu_die(unsigned int cpu);
 void native_play_dead(void);
 void play_dead_common(void);
-void wbinvd_on_cpu(int cpu);
-int wbinvd_on_all_cpus(void);
 
-void native_send_call_func_ipi(const struct cpumask *mask);
+void native_send_call_func_ipi(cpumask_t mask);
 void native_send_call_func_single_ipi(int cpu);
-void x86_idle_thread_init(unsigned int cpu, struct task_struct *idle);
 
-void smp_store_boot_cpu_info(void);
+extern void prefill_possible_map(void);
+
 void smp_store_cpu_info(int id);
 #define cpu_physical_id(cpu)	per_cpu(x86_cpu_to_apicid, cpu)
 
-#else /* !CONFIG_SMP */
-#define wbinvd_on_cpu(cpu)     wbinvd()
-static inline int wbinvd_on_all_cpus(void)
+/* We don't mark CPUs online until __cpu_up(), so we need another measure */
+static inline int num_booting_cpus(void)
 {
-	wbinvd();
-	return 0;
+	return cpus_weight(cpu_callout_map);
+}
+#else
+static inline void prefill_possible_map(void)
+{
 }
 #endif /* CONFIG_SMP */
 
-extern unsigned disabled_cpus;
+extern unsigned disabled_cpus __cpuinitdata;
 
 #ifdef CONFIG_X86_32_SMP
 /*
@@ -178,11 +165,11 @@ extern unsigned disabled_cpus;
  * from the initial startup. We map APIC_BASE very early in page_setup(),
  * so this is correct in the x86 case.
  */
-#define raw_smp_processor_id() (this_cpu_read(cpu_number))
+#define raw_smp_processor_id() (x86_read_percpu(cpu_number))
 extern int safe_smp_processor_id(void);
 
 #elif defined(CONFIG_X86_64_SMP)
-#define raw_smp_processor_id() (this_cpu_read(cpu_number))
+#define raw_smp_processor_id()	read_pda(cpunumber)
 
 #define stack_smp_processor_id()					\
 ({								\
@@ -192,6 +179,10 @@ extern int safe_smp_processor_id(void);
 })
 #define safe_smp_processor_id()		smp_processor_id()
 
+#else /* !CONFIG_X86_32_SMP && !CONFIG_X86_64_SMP */
+#define cpu_physical_id(cpu)		boot_cpu_physical_apicid
+#define safe_smp_processor_id()		0
+#define stack_smp_processor_id() 	0
 #endif
 
 #ifdef CONFIG_X86_LOCAL_APIC
@@ -200,12 +191,31 @@ extern int safe_smp_processor_id(void);
 static inline int logical_smp_processor_id(void)
 {
 	/* we don't want to mark this access volatile - bad code generation */
-	return GET_APIC_LOGICAL_ID(apic_read(APIC_LDR));
+	return GET_APIC_LOGICAL_ID(*(u32 *)(APIC_BASE + APIC_LDR));
 }
 
+#include <mach_apicdef.h>
+static inline unsigned int read_apic_id(void)
+{
+	unsigned int reg;
+
+	reg = *(u32 *)(APIC_BASE + APIC_ID);
+
+	return GET_APIC_ID(reg);
+}
 #endif
 
+
+# if defined(APIC_DEFINITION) || defined(CONFIG_X86_64)
 extern int hard_smp_processor_id(void);
+# else
+#include <mach_apicdef.h>
+static inline int hard_smp_processor_id(void)
+{
+	/* we don't want to mark this access volatile - bad code generation */
+	return read_apic_id();
+}
+# endif /* APIC_DEFINITION */
 
 #else /* CONFIG_X86_LOCAL_APIC */
 
@@ -215,11 +225,5 @@ extern int hard_smp_processor_id(void);
 
 #endif /* CONFIG_X86_LOCAL_APIC */
 
-#ifdef CONFIG_DEBUG_NMI_SELFTEST
-extern void nmi_selftest(void);
-#else
-#define nmi_selftest() do { } while (0)
-#endif
-
 #endif /* __ASSEMBLY__ */
-#endif /* _ASM_X86_SMP_H */
+#endif /* ASM_X86__SMP_H */

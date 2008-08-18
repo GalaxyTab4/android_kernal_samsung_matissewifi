@@ -1,10 +1,23 @@
-#ifndef _ASM_X86_MODULE_H
-#define _ASM_X86_MODULE_H
+#ifndef ASM_X86__MODULE_H
+#define ASM_X86__MODULE_H
 
-#include <asm-generic/module.h>
+/* x86_32/64 are simple */
+struct mod_arch_specific {};
+
+#ifdef CONFIG_X86_32
+# define Elf_Shdr Elf32_Shdr
+# define Elf_Sym Elf32_Sym
+# define Elf_Ehdr Elf32_Ehdr
+#else
+# define Elf_Shdr Elf64_Shdr
+# define Elf_Sym Elf64_Sym
+# define Elf_Ehdr Elf64_Ehdr
+#endif
 
 #ifdef CONFIG_X86_64
 /* X86_64 does not define MODULE_PROC_FAMILY */
+#elif defined CONFIG_M386
+#define MODULE_PROC_FAMILY "386 "
 #elif defined CONFIG_M486
 #define MODULE_PROC_FAMILY "486 "
 #elif defined CONFIG_M586
@@ -15,8 +28,6 @@
 #define MODULE_PROC_FAMILY "586MMX "
 #elif defined CONFIG_MCORE2
 #define MODULE_PROC_FAMILY "CORE2 "
-#elif defined CONFIG_MATOM
-#define MODULE_PROC_FAMILY "ATOM "
 #elif defined CONFIG_M686
 #define MODULE_PROC_FAMILY "686 "
 #elif defined CONFIG_MPENTIUMII
@@ -33,7 +44,7 @@
 #define MODULE_PROC_FAMILY "K7 "
 #elif defined CONFIG_MK8
 #define MODULE_PROC_FAMILY "K8 "
-#elif defined CONFIG_MELAN
+#elif defined CONFIG_X86_ELAN
 #define MODULE_PROC_FAMILY "ELAN "
 #elif defined CONFIG_MCRUSOE
 #define MODULE_PROC_FAMILY "CRUSOE "
@@ -58,7 +69,12 @@
 #endif
 
 #ifdef CONFIG_X86_32
-# define MODULE_ARCH_VERMAGIC MODULE_PROC_FAMILY
+# ifdef CONFIG_4KSTACKS
+#  define MODULE_STACKSIZE "4KSTACKS "
+# else
+#  define MODULE_STACKSIZE ""
+# endif
+# define MODULE_ARCH_VERMAGIC MODULE_PROC_FAMILY MODULE_STACKSIZE
 #endif
 
-#endif /* _ASM_X86_MODULE_H */
+#endif /* ASM_X86__MODULE_H */

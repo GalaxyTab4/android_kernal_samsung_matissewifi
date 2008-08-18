@@ -1,16 +1,16 @@
-#ifndef _ASM_X86_DEVICE_H
-#define _ASM_X86_DEVICE_H
+#ifndef ASM_X86__DEVICE_H
+#define ASM_X86__DEVICE_H
 
 struct dev_archdata {
-#ifdef CONFIG_X86_DEV_DMA_OPS
-	struct dma_map_ops *dma_ops;
+#ifdef CONFIG_ACPI
+	void	*acpi_handle;
 #endif
-#if defined(CONFIG_INTEL_IOMMU) || defined(CONFIG_AMD_IOMMU)
+#ifdef CONFIG_X86_64
+struct dma_mapping_ops *dma_ops;
+#endif
+#ifdef CONFIG_DMAR
 	void *iommu; /* hook for IOMMU specific extension */
 #endif
 };
 
-struct pdev_archdata {
-};
-
-#endif /* _ASM_X86_DEVICE_H */
+#endif /* ASM_X86__DEVICE_H */

@@ -1,17 +1,21 @@
 #ifdef __ASSEMBLY__
 
-#include <asm/asm.h>
+#include <asm/dwarf2.h>
 
 /* The annotation hides the frame from the unwinder and makes it look
    like a ordinary ebp save/restore. This avoids some special cases for
    frame pointer later */
 #ifdef CONFIG_FRAME_POINTER
 	.macro FRAME
-	__ASM_SIZE(push,)	%__ASM_REG(bp)
-	__ASM_SIZE(mov)		%__ASM_REG(sp), %__ASM_REG(bp)
+	pushl %ebp
+	CFI_ADJUST_CFA_OFFSET 4
+	CFI_REL_OFFSET ebp,0
+	movl %esp,%ebp
 	.endm
 	.macro ENDFRAME
-	__ASM_SIZE(pop,)	%__ASM_REG(bp)
+	popl %ebp
+	CFI_ADJUST_CFA_OFFSET -4
+	CFI_RESTORE ebp
 	.endm
 #else
 	.macro FRAME

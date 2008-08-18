@@ -1,6 +1,7 @@
-#ifndef _ASM_X86_BUG_H
-#define _ASM_X86_BUG_H
+#ifndef ASM_X86__BUG_H
+#define ASM_X86__BUG_H
 
+#ifdef CONFIG_BUG
 #define HAVE_ARCH_BUG
 
 #ifdef CONFIG_DEBUG_BUGVERBOSE
@@ -8,7 +9,7 @@
 #ifdef CONFIG_X86_32
 # define __BUG_C0	"2:\t.long 1b, %c0\n"
 #else
-# define __BUG_C0	"2:\t.long 1b - 2b, %c0 - 2b\n"
+# define __BUG_C0	"2:\t.quad 1b, %c0\n"
 #endif
 
 #define BUG()							\
@@ -21,17 +22,18 @@ do {								\
 		     ".popsection"				\
 		     : : "i" (__FILE__), "i" (__LINE__),	\
 		     "i" (sizeof(struct bug_entry)));		\
-	unreachable();						\
+	for (;;) ;						\
 } while (0)
 
 #else
 #define BUG()							\
 do {								\
 	asm volatile("ud2");					\
-	unreachable();						\
+	for (;;) ;						\
 } while (0)
 #endif
 
-#include <asm-generic/bug.h>
+#endif /* !CONFIG_BUG */
 
-#endif /* _ASM_X86_BUG_H */
+#include <asm-generic/bug.h>
+#endif /* ASM_X86__BUG_H */

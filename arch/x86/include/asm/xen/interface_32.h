@@ -6,8 +6,8 @@
  * Copyright (c) 2004, K A Fraser
  */
 
-#ifndef _ASM_X86_XEN_INTERFACE_32_H
-#define _ASM_X86_XEN_INTERFACE_32_H
+#ifndef ASM_X86__XEN__INTERFACE_32_H
+#define ASM_X86__XEN__INTERFACE_32_H
 
 
 /*
@@ -31,11 +31,6 @@
 
 /* And the trap vector is... */
 #define TRAP_INSTR "int $0x82"
-
-#define __MACH2PHYS_VIRT_START 0xF5800000
-#define __MACH2PHYS_VIRT_END   0xF6800000
-
-#define __MACH2PHYS_SHIFT      2
 
 /*
  * Virtual addresses beyond this are not modifiable by guest OSes. The
@@ -99,4 +94,4 @@ typedef struct xen_callback xen_callback_t;
 #define xen_pfn_to_cr3(pfn) (((unsigned)(pfn) << 12) | ((unsigned)(pfn) >> 20))
 #define xen_cr3_to_pfn(cr3) (((unsigned)(cr3) >> 12) | ((unsigned)(cr3) << 20))
 
-#endif /* _ASM_X86_XEN_INTERFACE_32_H */
+#endif /* ASM_X86__XEN__INTERFACE_32_H */

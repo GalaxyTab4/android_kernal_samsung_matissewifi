@@ -8,8 +8,8 @@
  * Copyright (C) 2008 Silicon Graphics, Inc. All rights reserved.
  */
 
-#ifndef _ASM_X86_UV_UV_IRQ_H
-#define _ASM_X86_UV_UV_IRQ_H
+#ifndef ASM_X86__UV__UV_IRQ_H
+#define ASM_X86__UV__UV_IRQ_H
 
 /* If a generic version of this structure gets defined, eliminate this one. */
 struct uv_IO_APIC_route_entry {
@@ -25,14 +25,12 @@ struct uv_IO_APIC_route_entry {
 		dest		: 32;
 };
 
-enum {
-	UV_AFFINITY_ALL,
-	UV_AFFINITY_NODE,
-	UV_AFFINITY_CPU
-};
+extern struct irq_chip uv_irq_chip;
 
-extern int uv_irq_2_mmr_info(int, unsigned long *, int *);
-extern int uv_setup_irq(char *, int, int, unsigned long, int);
-extern void uv_teardown_irq(unsigned int);
+extern int arch_enable_uv_irq(char *, unsigned int, int, int, unsigned long);
+extern void arch_disable_uv_irq(int, unsigned long);
 
-#endif /* _ASM_X86_UV_UV_IRQ_H */
+extern int uv_setup_irq(char *, int, int, unsigned long);
+extern void uv_teardown_irq(unsigned int, int, unsigned long);
+
+#endif /* ASM_X86__UV__UV_IRQ_H */

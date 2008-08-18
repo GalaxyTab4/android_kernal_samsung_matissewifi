@@ -1,6 +1,6 @@
 /* Written 2000 by Andi Kleen */
-#ifndef _ASM_X86_DESC_DEFS_H
-#define _ASM_X86_DESC_DEFS_H
+#ifndef ASM_X86__DESC_DEFS_H
+#define ASM_X86__DESC_DEFS_H
 
 /*
  * Segment descriptor structure definitions, usable from both x86_64 and i386
@@ -12,9 +12,9 @@
 #include <linux/types.h>
 
 /*
- * FIXME: Accessing the desc_struct through its fields is more elegant,
+ * FIXME: Acessing the desc_struct through its fields is more elegant,
  * and should be the one valid thing to do. However, a lot of open code
- * still touches the a and b accessors, and doing this allow us to do it
+ * still touches the a and b acessors, and doing this allow us to do it
  * incrementally. We keep the signature as a struct, rather than an union,
  * so we can get rid of it transparently in the future -- glommer
  */
@@ -33,12 +33,6 @@ struct desc_struct {
 		};
 	};
 } __attribute__((packed));
-
-#define GDT_ENTRY_INIT(flags, base, limit) { { { \
-		.a = ((limit) & 0xffff) | (((base) & 0xffff) << 16), \
-		.b = (((base) & 0xff0000) >> 16) | (((flags) & 0xf0ff) << 8) | \
-			((limit) & 0xf0000) | ((base) & 0xff000000), \
-	} } }
 
 enum {
 	GATE_INTERRUPT = 0xE,
@@ -98,4 +92,4 @@ struct desc_ptr {
 
 #endif /* !__ASSEMBLY__ */
 
-#endif /* _ASM_X86_DESC_DEFS_H */
+#endif /* ASM_X86__DESC_DEFS_H */

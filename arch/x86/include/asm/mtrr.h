@@ -20,18 +20,70 @@
     The postal address is:
       Richard Gooch, c/o ATNF, P. O. Box 76, Epping, N.S.W., 2121, Australia.
 */
-#ifndef _ASM_X86_MTRR_H
-#define _ASM_X86_MTRR_H
+#ifndef ASM_X86__MTRR_H
+#define ASM_X86__MTRR_H
 
-#include <uapi/asm/mtrr.h>
+#include <linux/ioctl.h>
+#include <linux/errno.h>
 
+#define	MTRR_IOCTL_BASE	'M'
 
-/*
- * The following functions are for use by other drivers that cannot use
- * arch_phys_wc_add and arch_phys_wc_del.
- */
+struct mtrr_sentry {
+    unsigned long base;    /*  Base address     */
+    unsigned int size;    /*  Size of region   */
+    unsigned int type;     /*  Type of region   */
+};
+
+/* Warning: this structure has a different order from i386
+   on x86-64. The 32bit emulation code takes care of that.
+   But you need to use this for 64bit, otherwise your X server
+   will break. */
+
+#ifdef __i386__
+struct mtrr_gentry {
+    unsigned int regnum;   /*  Register number  */
+    unsigned long base;    /*  Base address     */
+    unsigned int size;    /*  Size of region   */
+    unsigned int type;     /*  Type of region   */
+};
+
+#else /* __i386__ */
+
+struct mtrr_gentry {
+    unsigned long base;    /*  Base address     */
+    unsigned int size;    /*  Size of region   */
+    unsigned int regnum;   /*  Register number  */
+    unsigned int type;     /*  Type of region   */
+};
+#endif /* !__i386__ */
+
+/*  These are the various ioctls  */
+#define MTRRIOC_ADD_ENTRY        _IOW(MTRR_IOCTL_BASE,  0, struct mtrr_sentry)
+#define MTRRIOC_SET_ENTRY        _IOW(MTRR_IOCTL_BASE,  1, struct mtrr_sentry)
+#define MTRRIOC_DEL_ENTRY        _IOW(MTRR_IOCTL_BASE,  2, struct mtrr_sentry)
+#define MTRRIOC_GET_ENTRY        _IOWR(MTRR_IOCTL_BASE, 3, struct mtrr_gentry)
+#define MTRRIOC_KILL_ENTRY       _IOW(MTRR_IOCTL_BASE,  4, struct mtrr_sentry)
+#define MTRRIOC_ADD_PAGE_ENTRY   _IOW(MTRR_IOCTL_BASE,  5, struct mtrr_sentry)
+#define MTRRIOC_SET_PAGE_ENTRY   _IOW(MTRR_IOCTL_BASE,  6, struct mtrr_sentry)
+#define MTRRIOC_DEL_PAGE_ENTRY   _IOW(MTRR_IOCTL_BASE,  7, struct mtrr_sentry)
+#define MTRRIOC_GET_PAGE_ENTRY   _IOWR(MTRR_IOCTL_BASE, 8, struct mtrr_gentry)
+#define MTRRIOC_KILL_PAGE_ENTRY  _IOW(MTRR_IOCTL_BASE,  9, struct mtrr_sentry)
+
+/*  These are the region types  */
+#define MTRR_TYPE_UNCACHABLE 0
+#define MTRR_TYPE_WRCOMB     1
+/*#define MTRR_TYPE_         2*/
+/*#define MTRR_TYPE_         3*/
+#define MTRR_TYPE_WRTHROUGH  4
+#define MTRR_TYPE_WRPROT     5
+#define MTRR_TYPE_WRBACK     6
+#define MTRR_NUM_TYPES       7
+
+#ifdef __KERNEL__
+
+/*  The following functions are for use by other drivers  */
 # ifdef CONFIG_MTRR
-extern u8 mtrr_type_lookup(u64 addr, u64 end, u8 *uniform);
+extern u8 mtrr_type_lookup(u64 addr, u64 end);
 extern void mtrr_save_fixed_ranges(void *);
 extern void mtrr_save_state(void);
 extern int mtrr_add(unsigned long base, unsigned long size,
@@ -43,18 +95,15 @@ extern int mtrr_del_page(int reg, unsigned long base, unsigned long size);
 extern void mtrr_centaur_report_mcr(int mcr, u32 lo, u32 hi);
 extern void mtrr_ap_init(void);
 extern void mtrr_bp_init(void);
-extern void set_mtrr_aps_delayed_init(void);
-extern void mtrr_aps_init(void);
-extern void mtrr_bp_restore(void);
 extern int mtrr_trim_uncached_memory(unsigned long end_pfn);
 extern int amd_special_default_mtrr(void);
 #  else
-static inline u8 mtrr_type_lookup(u64 addr, u64 end, u8 *uniform)
+static inline u8 mtrr_type_lookup(u64 addr, u64 end)
 {
 	/*
 	 * Return no-MTRRs:
 	 */
-	return MTRR_TYPE_INVALID;
+	return 0xff;
 }
 #define mtrr_save_fixed_ranges(arg) do {} while (0)
 #define mtrr_save_state() do {} while (0)
@@ -86,9 +135,6 @@ static inline void mtrr_centaur_report_mcr(int mcr, u32 lo, u32 hi)
 
 #define mtrr_ap_init() do {} while (0)
 #define mtrr_bp_init() do {} while (0)
-#define set_mtrr_aps_delayed_init() do {} while (0)
-#define mtrr_aps_init() do {} while (0)
-#define mtrr_bp_restore() do {} while (0)
 #  endif
 
 #ifdef CONFIG_COMPAT
@@ -122,8 +168,6 @@ struct mtrr_gentry32 {
 				 _IOW(MTRR_IOCTL_BASE,  9, struct mtrr_sentry32)
 #endif /* CONFIG_COMPAT */
 
-/* Bit fields for enabled in struct mtrr_state_type */
-#define MTRR_STATE_MTRR_FIXED_ENABLED	0x01
-#define MTRR_STATE_MTRR_ENABLED		0x02
+#endif /* __KERNEL__ */
 
-#endif /* _ASM_X86_MTRR_H */
+#endif /* ASM_X86__MTRR_H */

@@ -1,11 +1,12 @@
-#ifndef _ASM_X86_UACCESS_32_H
-#define _ASM_X86_UACCESS_32_H
+#ifndef ASM_X86__UACCESS_32_H
+#define ASM_X86__UACCESS_32_H
 
 /*
  * User space memory access functions
  */
 #include <linux/errno.h>
 #include <linux/thread_info.h>
+#include <linux/prefetch.h>
 #include <linux/string.h>
 #include <asm/asm.h>
 #include <asm/page.h>
@@ -32,7 +33,7 @@ unsigned long __must_check __copy_from_user_ll_nocache_nozero
  * Copy data from kernel space to user space.  Caller must check
  * the specified block with access_ok() before calling this function.
  * The caller should also make sure he pins the user space address
- * so that we don't result in page fault and sleep.
+ * so that the we don't result in page fault and sleep.
  *
  * Here we special-case 1, 2 and 4-byte copy_*_user invocations.  On a fault
  * we return the initial request size (1, 2 or 4), as copy_*_user should do.
@@ -59,10 +60,6 @@ __copy_to_user_inatomic(void __user *to, const void *from, unsigned long n)
 			__put_user_size(*(u32 *)from, (u32 __user *)to,
 					4, ret, 4);
 			return ret;
-		case 8:
-			__put_user_size(*(u64 *)from, (u64 __user *)to,
-					8, ret, 8);
-			return ret;
 		}
 	}
 	return __copy_to_user_ll(to, from, n);
@@ -74,8 +71,7 @@ __copy_to_user_inatomic(void __user *to, const void *from, unsigned long n)
  * @from: Source address, in kernel space.
  * @n:    Number of bytes to copy.
  *
- * Context: User context only. This function may sleep if pagefaults are
- *          enabled.
+ * Context: User context only.  This function may sleep.
  *
  * Copy data from kernel space to user space.  Caller must check
  * the specified block with access_ok() before calling this function.
@@ -86,8 +82,8 @@ __copy_to_user_inatomic(void __user *to, const void *from, unsigned long n)
 static __always_inline unsigned long __must_check
 __copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-	might_fault();
-	return __copy_to_user_inatomic(to, from, n);
+       might_sleep();
+       return __copy_to_user_inatomic(to, from, n);
 }
 
 static __always_inline unsigned long
@@ -122,8 +118,7 @@ __copy_from_user_inatomic(void *to, const void __user *from, unsigned long n)
  * @from: Source address, in user space.
  * @n:    Number of bytes to copy.
  *
- * Context: User context only. This function may sleep if pagefaults are
- *          enabled.
+ * Context: User context only.  This function may sleep.
  *
  * Copy data from user space to kernel space.  Caller must check
  * the specified block with access_ok() before calling this function.
@@ -142,7 +137,7 @@ __copy_from_user_inatomic(void *to, const void __user *from, unsigned long n)
 static __always_inline unsigned long
 __copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-	might_fault();
+	might_sleep();
 	if (__builtin_constant_p(n)) {
 		unsigned long ret;
 
@@ -164,7 +159,7 @@ __copy_from_user(void *to, const void __user *from, unsigned long n)
 static __always_inline unsigned long __copy_from_user_nocache(void *to,
 				const void __user *from, unsigned long n)
 {
-	might_fault();
+	might_sleep();
 	if (__builtin_constant_p(n)) {
 		unsigned long ret;
 
@@ -190,4 +185,34 @@ __copy_from_user_inatomic_nocache(void *to, const void __user *from,
        return __copy_from_user_ll_nocache_nozero(to, from, n);
 }
 
-#endif /* _ASM_X86_UACCESS_32_H */
+unsigned long __must_check copy_to_user(void __user *to,
+					const void *from, unsigned long n);
+unsigned long __must_check copy_from_user(void *to,
+					  const void __user *from,
+					  unsigned long n);
+long __must_check strncpy_from_user(char *dst, const char __user *src,
+				    long count);
+long __must_check __strncpy_from_user(char *dst,
+				      const char __user *src, long count);
+
+/**
+ * strlen_user: - Get the size of a string in user space.
+ * @str: The string to measure.
+ *
+ * Context: User context only.  This function may sleep.
+ *
+ * Get the size of a NUL-terminated string in user space.
+ *
+ * Returns the size of the string INCLUDING the terminating NUL.
+ * On exception, returns 0.
+ *
+ * If there is a limit on the length of a valid string, you may wish to
+ * consider using strnlen_user() instead.
+ */
+#define strlen_user(str) strnlen_user(str, LONG_MAX)
+
+long strnlen_user(const char __user *str, long n);
+unsigned long __must_check clear_user(void __user *mem, unsigned long len);
+unsigned long __must_check __clear_user(void __user *mem, unsigned long len);
+
+#endif /* ASM_X86__UACCESS_32_H */

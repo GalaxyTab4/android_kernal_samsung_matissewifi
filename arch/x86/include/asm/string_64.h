@@ -1,5 +1,5 @@
-#ifndef _ASM_X86_STRING_64_H
-#define _ASM_X86_STRING_64_H
+#ifndef ASM_X86__STRING_64_H
+#define ASM_X86__STRING_64_H
 
 #ifdef __KERNEL__
 
@@ -27,11 +27,10 @@ static __always_inline void *__inline_memcpy(void *to, const void *from, size_t 
    function. */
 
 #define __HAVE_ARCH_MEMCPY 1
+#if (__GNUC__ == 4 && __GNUC_MINOR__ >= 3) || __GNUC__ > 4
 extern void *memcpy(void *to, const void *from, size_t len);
+#else
 extern void *__memcpy(void *to, const void *from, size_t len);
-
-#ifndef CONFIG_KMEMCHECK
-#if (__GNUC__ == 4 && __GNUC_MINOR__ < 3) || __GNUC__ < 4
 #define memcpy(dst, src, len)					\
 ({								\
 	size_t __len = (len);					\
@@ -43,21 +42,12 @@ extern void *__memcpy(void *to, const void *from, size_t len);
 	__ret;							\
 })
 #endif
-#else
-/*
- * kmemcheck becomes very happy if we use the REP instructions unconditionally,
- * because it means that we know both memory operands in advance.
- */
-#define memcpy(dst, src, len) __inline_memcpy((dst), (src), (len))
-#endif
 
 #define __HAVE_ARCH_MEMSET
 void *memset(void *s, int c, size_t n);
-void *__memset(void *s, int c, size_t n);
 
 #define __HAVE_ARCH_MEMMOVE
 void *memmove(void *dest, const void *src, size_t count);
-void *__memmove(void *dest, const void *src, size_t count);
 
 int memcmp(const void *cs, const void *ct, size_t count);
 size_t strlen(const char *s);
@@ -65,19 +55,6 @@ char *strcpy(char *dest, const char *src);
 char *strcat(char *dest, const char *src);
 int strcmp(const char *cs, const char *ct);
 
-#if defined(CONFIG_KASAN) && !defined(__SANITIZE_ADDRESS__)
-
-/*
- * For files that not instrumented (e.g. mm/slub.c) we
- * should use not instrumented version of mem* functions.
- */
-
-#undef memcpy
-#define memcpy(dst, src, len) __memcpy(dst, src, len)
-#define memmove(dst, src, len) __memmove(dst, src, len)
-#define memset(s, c, n) __memset(s, c, n)
-#endif
-
 #endif /* __KERNEL__ */
 
-#endif /* _ASM_X86_STRING_64_H */
+#endif /* ASM_X86__STRING_64_H */

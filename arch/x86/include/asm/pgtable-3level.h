@@ -1,5 +1,5 @@
-#ifndef _ASM_X86_PGTABLE_3LEVEL_H
-#define _ASM_X86_PGTABLE_3LEVEL_H
+#ifndef ASM_X86__PGTABLE_3LEVEL_H
+#define ASM_X86__PGTABLE_3LEVEL_H
 
 /*
  * Intel Physical Address Extension (PAE) Mode - three-level page
@@ -9,14 +9,29 @@
  */
 
 #define pte_ERROR(e)							\
-	pr_err("%s:%d: bad pte %p(%08lx%08lx)\n",			\
+	printk("%s:%d: bad pte %p(%08lx%08lx).\n",			\
 	       __FILE__, __LINE__, &(e), (e).pte_high, (e).pte_low)
 #define pmd_ERROR(e)							\
-	pr_err("%s:%d: bad pmd %p(%016Lx)\n",				\
+	printk("%s:%d: bad pmd %p(%016Lx).\n",				\
 	       __FILE__, __LINE__, &(e), pmd_val(e))
 #define pgd_ERROR(e)							\
-	pr_err("%s:%d: bad pgd %p(%016Lx)\n",				\
+	printk("%s:%d: bad pgd %p(%016Lx).\n",				\
 	       __FILE__, __LINE__, &(e), pgd_val(e))
+
+static inline int pud_none(pud_t pud)
+{
+	return pud_val(pud) == 0;
+}
+
+static inline int pud_bad(pud_t pud)
+{
+	return (pud_val(pud) & ~(PTE_PFN_MASK | _KERNPG_TABLE | _PAGE_USER)) != 0;
+}
+
+static inline int pud_present(pud_t pud)
+{
+	return pud_val(pud) & _PAGE_PRESENT;
+}
 
 /* Rules for using set_pte: the pte being assigned *must* be
  * either not present or in a state where the hardware will
@@ -31,58 +46,21 @@ static inline void native_set_pte(pte_t *ptep, pte_t pte)
 	ptep->pte_low = pte.pte_low;
 }
 
-#define pmd_read_atomic pmd_read_atomic
 /*
- * pte_offset_map_lock on 32bit PAE kernels was reading the pmd_t with
- * a "*pmdp" dereference done by gcc. Problem is, in certain places
- * where pte_offset_map_lock is called, concurrent page faults are
- * allowed, if the mmap_sem is hold for reading. An example is mincore
- * vs page faults vs MADV_DONTNEED. On the page fault side
- * pmd_populate rightfully does a set_64bit, but if we're reading the
- * pmd_t with a "*pmdp" on the mincore side, a SMP race can happen
- * because gcc will not read the 64bit of the pmd atomically. To fix
- * this all places running pmd_offset_map_lock() while holding the
- * mmap_sem in read mode, shall read the pmdp pointer using this
- * function to know if the pmd is null nor not, and in turn to know if
- * they can run pmd_offset_map_lock or pmd_trans_huge or other pmd
- * operations.
- *
- * Without THP if the mmap_sem is hold for reading, the pmd can only
- * transition from null to not null while pmd_read_atomic runs. So
- * we can always return atomic pmd values with this function.
- *
- * With THP if the mmap_sem is hold for reading, the pmd can become
- * trans_huge or none or point to a pte (and in turn become "stable")
- * at any time under pmd_read_atomic. We could read it really
- * atomically here with a atomic64_read for the THP enabled case (and
- * it would be a whole lot simpler), but to avoid using cmpxchg8b we
- * only return an atomic pmdval if the low part of the pmdval is later
- * found stable (i.e. pointing to a pte). And we're returning a none
- * pmdval if the low part of the pmd is none. In some cases the high
- * and low part of the pmdval returned may not be consistent if THP is
- * enabled (the low part may point to previously mapped hugepage,
- * while the high part may point to a more recently mapped hugepage),
- * but pmd_none_or_trans_huge_or_clear_bad() only needs the low part
- * of the pmd to be read atomically to decide if the pmd is unstable
- * or not, with the only exception of when the low part of the pmd is
- * zero in which case we return a none pmd.
+ * Since this is only called on user PTEs, and the page fault handler
+ * must handle the already racy situation of simultaneous page faults,
+ * we are justified in merely clearing the PTE present bit, followed
+ * by a set.  The ordering here is important.
  */
-static inline pmd_t pmd_read_atomic(pmd_t *pmdp)
+static inline void native_set_pte_present(struct mm_struct *mm,
+					  unsigned long addr,
+					  pte_t *ptep, pte_t pte)
 {
-	pmdval_t ret;
-	u32 *tmp = (u32 *)pmdp;
-
-	ret = (pmdval_t) (*tmp);
-	if (ret) {
-		/*
-		 * If the low part is null, we must not read the high part
-		 * or we can end up with a partial pmd.
-		 */
-		smp_rmb();
-		ret |= ((pmdval_t)*(tmp + 1)) << 32;
-	}
-
-	return (pmd_t) { ret };
+	ptep->pte_low = 0;
+	smp_wmb();
+	ptep->pte_high = pte.pte_high;
+	smp_wmb();
+	ptep->pte_low = pte.pte_low;
 }
 
 static inline void native_set_pte_atomic(pte_t *ptep, pte_t pte)
@@ -123,6 +101,8 @@ static inline void native_pmd_clear(pmd_t *pmd)
 
 static inline void pud_clear(pud_t *pudp)
 {
+	unsigned long pgd;
+
 	set_pud(pudp, __pud(0));
 
 	/*
@@ -131,11 +111,23 @@ static inline void pud_clear(pud_t *pudp)
 	 * section 8.1: in PAE mode we explicitly have to flush the
 	 * TLB via cr3 if the top-level pgd is changed...
 	 *
-	 * Currently all places where pud_clear() is called either have
-	 * flush_tlb_mm() followed or don't need TLB flush (x86_64 code or
-	 * pud_clear_bad()), so we don't need TLB flush here.
+	 * Make sure the pud entry we're updating is within the
+	 * current pgd to avoid unnecessary TLB flushes.
 	 */
+	pgd = read_cr3();
+	if (__pa(pudp) >= pgd && __pa(pudp) <
+	    (pgd + sizeof(pgd_t)*PTRS_PER_PGD))
+		write_cr3(pgd);
 }
+
+#define pud_page(pud) ((struct page *) __va(pud_val(pud) & PTE_PFN_MASK))
+
+#define pud_page_vaddr(pud) ((unsigned long) __va(pud_val(pud) & PTE_PFN_MASK))
+
+
+/* Find an entry in the second-level page table.. */
+#define pmd_offset(pud, address) ((pmd_t *)pud_page(*(pud)) +	\
+				  pmd_index(address))
 
 #ifdef CONFIG_SMP
 static inline pte_t native_ptep_get_and_clear(pte_t *ptep)
@@ -153,35 +145,31 @@ static inline pte_t native_ptep_get_and_clear(pte_t *ptep)
 #define native_ptep_get_and_clear(xp) native_local_ptep_get_and_clear(xp)
 #endif
 
-#ifdef CONFIG_SMP
-union split_pmd {
-	struct {
-		u32 pmd_low;
-		u32 pmd_high;
-	};
-	pmd_t pmd;
-};
-static inline pmd_t native_pmdp_get_and_clear(pmd_t *pmdp)
+#define __HAVE_ARCH_PTE_SAME
+static inline int pte_same(pte_t a, pte_t b)
 {
-	union split_pmd res, *orig = (union split_pmd *)pmdp;
-
-	/* xchg acts as a barrier before setting of the high bits */
-	res.pmd_low = xchg(&orig->pmd_low, 0);
-	res.pmd_high = orig->pmd_high;
-	orig->pmd_high = 0;
-
-	return res.pmd;
+	return a.pte_low == b.pte_low && a.pte_high == b.pte_high;
 }
-#else
-#define native_pmdp_get_and_clear(xp) native_local_pmdp_get_and_clear(xp)
-#endif
+
+static inline int pte_none(pte_t pte)
+{
+	return !pte.pte_low && !pte.pte_high;
+}
+
+/*
+ * Bits 0, 6 and 7 are taken in the low part of the pte,
+ * put the 32 bits of offset into the high part.
+ */
+#define pte_to_pgoff(pte) ((pte).pte_high)
+#define pgoff_to_pte(off)						\
+	((pte_t) { { .pte_low = _PAGE_FILE, .pte_high = (off) } })
+#define PTE_FILE_MAX_BITS       32
 
 /* Encode and de-code a swap entry */
-#define MAX_SWAPFILES_CHECK() BUILD_BUG_ON(MAX_SWAPFILES_SHIFT > 5)
 #define __swp_type(x)			(((x).val) & 0x1f)
 #define __swp_offset(x)			((x).val >> 5)
 #define __swp_entry(type, offset)	((swp_entry_t){(type) | (offset) << 5})
 #define __pte_to_swp_entry(pte)		((swp_entry_t){ (pte).pte_high })
 #define __swp_entry_to_pte(x)		((pte_t){ { .pte_high = (x).val } })
 
-#endif /* _ASM_X86_PGTABLE_3LEVEL_H */
+#endif /* ASM_X86__PGTABLE_3LEVEL_H */

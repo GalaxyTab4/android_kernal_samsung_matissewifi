@@ -1,5 +1,5 @@
-#ifndef _ASM_X86_SPARSEMEM_H
-#define _ASM_X86_SPARSEMEM_H
+#ifndef ASM_X86__SPARSEMEM_H
+#define ASM_X86__SPARSEMEM_H
 
 #ifdef CONFIG_SPARSEMEM
 /*
@@ -27,8 +27,8 @@
 #else /* CONFIG_X86_32 */
 # define SECTION_SIZE_BITS	27 /* matt - 128 is convenient right now */
 # define MAX_PHYSADDR_BITS	44
-# define MAX_PHYSMEM_BITS	46
+# define MAX_PHYSMEM_BITS	44
 #endif
 
 #endif /* CONFIG_SPARSEMEM */
-#endif /* _ASM_X86_SPARSEMEM_H */
+#endif /* ASM_X86__SPARSEMEM_H */

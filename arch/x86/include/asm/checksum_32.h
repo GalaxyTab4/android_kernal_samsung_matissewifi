@@ -1,5 +1,5 @@
-#ifndef _ASM_X86_CHECKSUM_32_H
-#define _ASM_X86_CHECKSUM_32_H
+#ifndef ASM_X86__CHECKSUM_32_H
+#define ASM_X86__CHECKSUM_32_H
 
 #include <linux/in6.h>
 
@@ -49,15 +49,9 @@ static inline __wsum csum_partial_copy_from_user(const void __user *src,
 						 int len, __wsum sum,
 						 int *err_ptr)
 {
-	__wsum ret;
-
 	might_sleep();
-	stac();
-	ret = csum_partial_copy_generic((__force void *)src, dst,
-					len, sum, err_ptr, NULL);
-	clac();
-
-	return ret;
+	return csum_partial_copy_generic((__force void *)src, dst,
+					 len, sum, err_ptr, NULL);
 }
 
 /*
@@ -167,8 +161,7 @@ static inline __sum16 csum_ipv6_magic(const struct in6_addr *saddr,
 	    "adcl $0, %0	;\n"
 	    : "=&r" (sum)
 	    : "r" (saddr), "r" (daddr),
-	      "r" (htonl(len)), "r" (htonl(proto)), "0" (sum)
-	    : "memory");
+	      "r" (htonl(len)), "r" (htonl(proto)), "0" (sum));
 
 	return csum_fold(sum);
 }
@@ -182,16 +175,10 @@ static inline __wsum csum_and_copy_to_user(const void *src,
 					   int len, __wsum sum,
 					   int *err_ptr)
 {
-	__wsum ret;
-
 	might_sleep();
-	if (access_ok(VERIFY_WRITE, dst, len)) {
-		stac();
-		ret = csum_partial_copy_generic(src, (__force void *)dst,
-						len, sum, NULL, err_ptr);
-		clac();
-		return ret;
-	}
+	if (access_ok(VERIFY_WRITE, dst, len))
+		return csum_partial_copy_generic(src, (__force void *)dst,
+						 len, sum, NULL, err_ptr);
 
 	if (len)
 		*err_ptr = -EFAULT;
@@ -199,4 +186,4 @@ static inline __wsum csum_and_copy_to_user(const void *src,
 	return (__force __wsum)-1; /* invalid checksum */
 }
 
-#endif /* _ASM_X86_CHECKSUM_32_H */
+#endif /* ASM_X86__CHECKSUM_32_H */

@@ -1,15 +1,15 @@
-#ifndef _ASM_X86_UACCESS_H
-#define _ASM_X86_UACCESS_H
+#ifndef ASM_X86__UACCESS_H
+#define ASM_X86__UACCESS_H
 /*
  * User space memory access functions
  */
 #include <linux/errno.h>
 #include <linux/compiler.h>
 #include <linux/thread_info.h>
+#include <linux/prefetch.h>
 #include <linux/string.h>
 #include <asm/asm.h>
 #include <asm/page.h>
-#include <asm/smap.h>
 
 #define VERIFY_READ 0
 #define VERIFY_WRITE 1
@@ -25,7 +25,7 @@
 #define MAKE_MM_SEG(s)	((mm_segment_t) { (s) })
 
 #define KERNEL_DS	MAKE_MM_SEG(-1UL)
-#define USER_DS 	MAKE_MM_SEG(TASK_SIZE_MAX)
+#define USER_DS		MAKE_MM_SEG(PAGE_OFFSET)
 
 #define get_ds()	(KERNEL_DS)
 #define get_fs()	(current_thread_info()->addr_limit)
@@ -33,37 +33,29 @@
 
 #define segment_eq(a, b)	((a).seg == (b).seg)
 
-#define user_addr_max() (current_thread_info()->addr_limit.seg)
-#define __addr_ok(addr) 	\
-	((unsigned long __force)(addr) < user_addr_max())
+#define __addr_ok(addr)					\
+	((unsigned long __force)(addr) <		\
+	 (current_thread_info()->addr_limit.seg))
 
 /*
  * Test whether a block of memory is a valid user space address.
  * Returns 0 if the range is valid, nonzero otherwise.
+ *
+ * This is equivalent to the following test:
+ * (u33)addr + (u33)size >= (u33)current->addr_limit.seg (u65 for x86_64)
+ *
+ * This needs 33-bit (65-bit for x86_64) arithmetic. We have a carry...
  */
-static inline bool __chk_range_not_ok(unsigned long addr, unsigned long size, unsigned long limit)
-{
-	/*
-	 * If we have used "sizeof()" for the size,
-	 * we know it won't overflow the limit (but
-	 * it might overflow the 'addr', so it's
-	 * important to subtract the size from the
-	 * limit, not add it to the address).
-	 */
-	if (__builtin_constant_p(size))
-		return unlikely(addr > limit - size);
 
-	/* Arbitrary sizes? Be careful about overflow */
-	addr += size;
-	if (unlikely(addr < size))
-		return true;
-	return unlikely(addr > limit);
-}
-
-#define __range_not_ok(addr, size, limit)				\
+#define __range_not_ok(addr, size)					\
 ({									\
+	unsigned long flag, roksum;					\
 	__chk_user_ptr(addr);						\
-	__chk_range_not_ok((unsigned long __force)(addr), size, limit); \
+	asm("add %3,%1 ; sbb %0,%0 ; cmp %1,%4 ; sbb $0,%0"		\
+	    : "=&r" (flag), "=r" (roksum)				\
+	    : "1" (addr), "g" ((long)(size)),				\
+	      "rm" (current_thread_info()->addr_limit.seg));		\
+	flag;								\
 })
 
 /**
@@ -74,8 +66,7 @@ static inline bool __chk_range_not_ok(unsigned long addr, unsigned long size, un
  * @addr: User space pointer to start of block to check
  * @size: Size of block to check
  *
- * Context: User context only. This function may sleep if pagefaults are
- *          enabled.
+ * Context: User context only.  This function may sleep.
  *
  * Checks if a pointer to a block of memory in user space is valid.
  *
@@ -86,16 +77,14 @@ static inline bool __chk_range_not_ok(unsigned long addr, unsigned long size, un
  * checks that the pointer is in the user space range - after calling
  * this function, memory access functions may still return -EFAULT.
  */
-#define access_ok(type, addr, size) \
-	likely(!__range_not_ok(addr, size, user_addr_max()))
+#define access_ok(type, addr, size) (likely(__range_not_ok(addr, size) == 0))
 
 /*
- * The exception table consists of pairs of addresses relative to the
- * exception table enty itself: the first is the address of an
- * instruction that is allowed to fault, and the second is the address
- * at which the program should continue.  No registers are modified,
- * so it is entirely up to the continuation code to figure out what to
- * do.
+ * The exception table consists of pairs of addresses: the first is the
+ * address of an instruction that is allowed to fault, and the second is
+ * the address at which the program should continue.  No registers are
+ * modified, so it is entirely up to the continuation code to figure out
+ * what to do.
  *
  * All the routines below use bits of fixup code that are out of line
  * with the main instruction path.  This means when everything is well,
@@ -104,14 +93,10 @@ static inline bool __chk_range_not_ok(unsigned long addr, unsigned long size, un
  */
 
 struct exception_table_entry {
-	int insn, fixup;
+	unsigned long insn, fixup;
 };
-/* This is not the generic standard exception_table_entry format */
-#define ARCH_HAS_SORT_EXTABLE
-#define ARCH_HAS_SEARCH_EXTABLE
 
 extern int fixup_exception(struct pt_regs *regs);
-extern int early_fixup_exception(unsigned long *ip);
 
 /*
  * These are the main single-value transfer routines.  They automatically
@@ -134,20 +119,20 @@ extern int __get_user_4(void);
 extern int __get_user_8(void);
 extern int __get_user_bad(void);
 
-/*
- * This is a type: either unsigned long, if the argument fits into
- * that type, or otherwise unsigned long long.
- */
-#define __inttype(x) \
-__typeof__(__builtin_choose_expr(sizeof(x) > sizeof(0UL), 0ULL, 0UL))
+#define __get_user_x(size, ret, x, ptr)		      \
+	asm volatile("call __get_user_" #size	      \
+		     : "=a" (ret),"=d" (x)	      \
+		     : "0" (ptr))		      \
+
+/* Careful: we have to cast the result to the type of the pointer
+ * for sign reasons */
 
 /**
  * get_user: - Get a simple variable from user space.
  * @x:   Variable to store result.
  * @ptr: Source address, in user space.
  *
- * Context: User context only. This function may sleep if pagefaults are
- *          enabled.
+ * Context: User context only.  This function may sleep.
  *
  * This macro copies a single simple variable from user space to kernel
  * space.  It supports simple types like char and int, but not larger
@@ -159,44 +144,51 @@ __typeof__(__builtin_choose_expr(sizeof(x) > sizeof(0UL), 0ULL, 0UL))
  * Returns zero on success, or -EFAULT on error.
  * On error, the variable @x is set to zero.
  */
-/*
- * Careful: we have to cast the result to the type of the pointer
- * for sign reasons.
- *
- * The use of _ASM_DX as the register specifier is a bit of a
- * simplification, as gcc only cares about it as the starting point
- * and not size: for a 64-bit value it will use %ecx:%edx on 32 bits
- * (%ecx being the next register in gcc's x86 register sequence), and
- * %rdx on 64 bits.
- *
- * Clang/LLVM cares about the size of the register, but still wants
- * the base register for something that ends up being a pair.
- */
+#ifdef CONFIG_X86_32
+#define __get_user_8(__ret_gu, __val_gu, ptr)				\
+		__get_user_x(X, __ret_gu, __val_gu, ptr)
+#else
+#define __get_user_8(__ret_gu, __val_gu, ptr)				\
+		__get_user_x(8, __ret_gu, __val_gu, ptr)
+#endif
+
 #define get_user(x, ptr)						\
 ({									\
 	int __ret_gu;							\
-	register __inttype(*(ptr)) __val_gu asm("%"_ASM_DX);		\
+	unsigned long __val_gu;						\
 	__chk_user_ptr(ptr);						\
-	might_fault();							\
-	asm volatile("call __get_user_%P3"				\
-		     : "=a" (__ret_gu), "=r" (__val_gu)			\
-		     : "0" (ptr), "i" (sizeof(*(ptr))));		\
-	(x) = (__force __typeof__(*(ptr))) __val_gu;			\
-	__builtin_expect(__ret_gu, 0);					\
+	switch (sizeof(*(ptr))) {					\
+	case 1:								\
+		__get_user_x(1, __ret_gu, __val_gu, ptr);		\
+		break;							\
+	case 2:								\
+		__get_user_x(2, __ret_gu, __val_gu, ptr);		\
+		break;							\
+	case 4:								\
+		__get_user_x(4, __ret_gu, __val_gu, ptr);		\
+		break;							\
+	case 8:								\
+		__get_user_8(__ret_gu, __val_gu, ptr);			\
+		break;							\
+	default:							\
+		__get_user_x(X, __ret_gu, __val_gu, ptr);		\
+		break;							\
+	}								\
+	(x) = (__typeof__(*(ptr)))__val_gu;				\
+	__ret_gu;							\
 })
 
 #define __put_user_x(size, x, ptr, __ret_pu)			\
 	asm volatile("call __put_user_" #size : "=a" (__ret_pu)	\
-		     : "0" ((typeof(*(ptr)))(x)), "c" (ptr) : "ebx")
+		     :"0" ((typeof(*(ptr)))(x)), "c" (ptr) : "ebx")
 
 
 
 #ifdef CONFIG_X86_32
-#define __put_user_asm_u64(x, addr, err, errret)			\
-	asm volatile(ASM_STAC "\n"					\
-		     "1:	movl %%eax,0(%2)\n"			\
+#define __put_user_u64(x, addr, err)					\
+	asm volatile("1:	movl %%eax,0(%2)\n"			\
 		     "2:	movl %%edx,4(%2)\n"			\
-		     "3: " ASM_CLAC "\n"				\
+		     "3:\n"						\
 		     ".section .fixup,\"ax\"\n"				\
 		     "4:	movl %3,%0\n"				\
 		     "	jmp 3b\n"					\
@@ -204,25 +196,14 @@ __typeof__(__builtin_choose_expr(sizeof(x) > sizeof(0UL), 0ULL, 0UL))
 		     _ASM_EXTABLE(1b, 4b)				\
 		     _ASM_EXTABLE(2b, 4b)				\
 		     : "=r" (err)					\
-		     : "A" (x), "r" (addr), "i" (errret), "0" (err))
-
-#define __put_user_asm_ex_u64(x, addr)					\
-	asm volatile(ASM_STAC "\n"					\
-		     "1:	movl %%eax,0(%1)\n"			\
-		     "2:	movl %%edx,4(%1)\n"			\
-		     "3: " ASM_CLAC "\n"				\
-		     _ASM_EXTABLE_EX(1b, 2b)				\
-		     _ASM_EXTABLE_EX(2b, 3b)				\
-		     : : "A" (x), "r" (addr))
+		     : "A" (x), "r" (addr), "i" (-EFAULT), "0" (err))
 
 #define __put_user_x8(x, ptr, __ret_pu)				\
 	asm volatile("call __put_user_8" : "=a" (__ret_pu)	\
 		     : "A" ((typeof(*(ptr)))(x)), "c" (ptr) : "ebx")
 #else
-#define __put_user_asm_u64(x, ptr, retval, errret) \
-	__put_user_asm(x, ptr, retval, "q", "", "er", errret)
-#define __put_user_asm_ex_u64(x, addr)	\
-	__put_user_asm_ex(x, addr, "q", "", "er")
+#define __put_user_u64(x, ptr, retval) \
+	__put_user_asm(x, ptr, retval, "q", "", "Zr", -EFAULT)
 #define __put_user_x8(x, ptr, __ret_pu) __put_user_x(8, x, ptr, __ret_pu)
 #endif
 
@@ -237,13 +218,14 @@ extern void __put_user_2(void);
 extern void __put_user_4(void);
 extern void __put_user_8(void);
 
+#ifdef CONFIG_X86_WP_WORKS_OK
+
 /**
  * put_user: - Write a simple value into user space.
  * @x:   Value to copy to user space.
  * @ptr: Destination address, in user space.
  *
- * Context: User context only. This function may sleep if pagefaults are
- *          enabled.
+ * Context: User context only.  This function may sleep.
  *
  * This macro copies a single simple value from kernel space to user
  * space.  It supports simple types like char and int, but not larger
@@ -259,7 +241,6 @@ extern void __put_user_8(void);
 	int __ret_pu;						\
 	__typeof__(*(ptr)) __pu_val;				\
 	__chk_user_ptr(ptr);					\
-	might_fault();						\
 	__pu_val = x;						\
 	switch (sizeof(*(ptr))) {				\
 	case 1:							\
@@ -278,7 +259,7 @@ extern void __put_user_8(void);
 		__put_user_x(X, __pu_val, ptr, __ret_pu);	\
 		break;						\
 	}							\
-	__builtin_expect(__ret_pu, 0);				\
+	__ret_pu;						\
 })
 
 #define __put_user_size(x, ptr, size, retval, errret)			\
@@ -293,46 +274,44 @@ do {									\
 		__put_user_asm(x, ptr, retval, "w", "w", "ir", errret);	\
 		break;							\
 	case 4:								\
-		__put_user_asm(x, ptr, retval, "l", "k", "ir", errret);	\
+		__put_user_asm(x, ptr, retval, "l", "k",  "ir", errret);\
 		break;							\
 	case 8:								\
-		__put_user_asm_u64((__typeof__(*ptr))(x), ptr, retval,	\
-				   errret);				\
+		__put_user_u64((__typeof__(*ptr))(x), ptr, retval);	\
 		break;							\
 	default:							\
 		__put_user_bad();					\
 	}								\
 } while (0)
 
-#define __put_user_size_ex(x, ptr, size)				\
+#else
+
+#define __put_user_size(x, ptr, size, retval, errret)			\
 do {									\
-	__chk_user_ptr(ptr);						\
-	switch (size) {							\
-	case 1:								\
-		__put_user_asm_ex(x, ptr, "b", "b", "iq");		\
-		break;							\
-	case 2:								\
-		__put_user_asm_ex(x, ptr, "w", "w", "ir");		\
-		break;							\
-	case 4:								\
-		__put_user_asm_ex(x, ptr, "l", "k", "ir");		\
-		break;							\
-	case 8:								\
-		__put_user_asm_ex_u64((__typeof__(*ptr))(x), ptr);	\
-		break;							\
-	default:							\
-		__put_user_bad();					\
-	}								\
+	__typeof__(*(ptr))__pus_tmp = x;				\
+	retval = 0;							\
+									\
+	if (unlikely(__copy_to_user_ll(ptr, &__pus_tmp, size) != 0))	\
+		retval = errret;					\
 } while (0)
+
+#define put_user(x, ptr)					\
+({								\
+	int __ret_pu;						\
+	__typeof__(*(ptr))__pus_tmp = x;			\
+	__ret_pu = 0;						\
+	if (unlikely(__copy_to_user_ll(ptr, &__pus_tmp,		\
+				       sizeof(*(ptr))) != 0))	\
+		__ret_pu = -EFAULT;				\
+	__ret_pu;						\
+})
+#endif
 
 #ifdef CONFIG_X86_32
 #define __get_user_asm_u64(x, ptr, retval, errret)	(x) = __get_user_bad()
-#define __get_user_asm_ex_u64(x, ptr)			(x) = __get_user_bad()
 #else
 #define __get_user_asm_u64(x, ptr, retval, errret) \
 	 __get_user_asm(x, ptr, retval, "q", "", "=r", errret)
-#define __get_user_asm_ex_u64(x, ptr) \
-	 __get_user_asm_ex(x, ptr, "q", "", "=r")
 #endif
 
 #define __get_user_size(x, ptr, size, retval, errret)			\
@@ -358,9 +337,8 @@ do {									\
 } while (0)
 
 #define __get_user_asm(x, addr, err, itype, rtype, ltype, errret)	\
-	asm volatile(ASM_STAC "\n"					\
-		     "1:	mov"itype" %2,%"rtype"1\n"		\
-		     "2: " ASM_CLAC "\n"				\
+	asm volatile("1:	mov"itype" %2,%"rtype"1\n"		\
+		     "2:\n"						\
 		     ".section .fixup,\"ax\"\n"				\
 		     "3:	mov %3,%0\n"				\
 		     "	xor"itype" %"rtype"1,%"rtype"1\n"		\
@@ -370,47 +348,20 @@ do {									\
 		     : "=r" (err), ltype(x)				\
 		     : "m" (__m(addr)), "i" (errret), "0" (err))
 
-#define __get_user_size_ex(x, ptr, size)				\
-do {									\
-	__chk_user_ptr(ptr);						\
-	switch (size) {							\
-	case 1:								\
-		__get_user_asm_ex(x, ptr, "b", "b", "=q");		\
-		break;							\
-	case 2:								\
-		__get_user_asm_ex(x, ptr, "w", "w", "=r");		\
-		break;							\
-	case 4:								\
-		__get_user_asm_ex(x, ptr, "l", "k", "=r");		\
-		break;							\
-	case 8:								\
-		__get_user_asm_ex_u64(x, ptr);				\
-		break;							\
-	default:							\
-		(x) = __get_user_bad();					\
-	}								\
-} while (0)
-
-#define __get_user_asm_ex(x, addr, itype, rtype, ltype)			\
-	asm volatile("1:	mov"itype" %1,%"rtype"0\n"		\
-		     "2:\n"						\
-		     _ASM_EXTABLE_EX(1b, 2b)				\
-		     : ltype(x) : "m" (__m(addr)))
-
 #define __put_user_nocheck(x, ptr, size)			\
 ({								\
-	int __pu_err;						\
+	long __pu_err;						\
 	__put_user_size((x), (ptr), (size), __pu_err, -EFAULT);	\
-	__builtin_expect(__pu_err, 0);				\
+	__pu_err;						\
 })
 
 #define __get_user_nocheck(x, ptr, size)				\
 ({									\
-	int __gu_err;							\
+	long __gu_err;							\
 	unsigned long __gu_val;						\
 	__get_user_size(__gu_val, (ptr), (size), __gu_err, -EFAULT);	\
 	(x) = (__force __typeof__(*(ptr)))__gu_val;			\
-	__builtin_expect(__gu_err, 0);					\
+	__gu_err;							\
 })
 
 /* FIXME: this hack is definitely wrong -AK */
@@ -423,9 +374,8 @@ struct __large_struct { unsigned long buf[100]; };
  * aliasing issues.
  */
 #define __put_user_asm(x, addr, err, itype, rtype, ltype, errret)	\
-	asm volatile(ASM_STAC "\n"					\
-		     "1:	mov"itype" %"rtype"1,%2\n"		\
-		     "2: " ASM_CLAC "\n"				\
+	asm volatile("1:	mov"itype" %"rtype"1,%2\n"		\
+		     "2:\n"						\
 		     ".section .fixup,\"ax\"\n"				\
 		     "3:	mov %3,%0\n"				\
 		     "	jmp 2b\n"					\
@@ -433,33 +383,12 @@ struct __large_struct { unsigned long buf[100]; };
 		     _ASM_EXTABLE(1b, 3b)				\
 		     : "=r"(err)					\
 		     : ltype(x), "m" (__m(addr)), "i" (errret), "0" (err))
-
-#define __put_user_asm_ex(x, addr, itype, rtype, ltype)			\
-	asm volatile("1:	mov"itype" %"rtype"0,%1\n"		\
-		     "2:\n"						\
-		     _ASM_EXTABLE_EX(1b, 2b)				\
-		     : : ltype(x), "m" (__m(addr)))
-
-/*
- * uaccess_try and catch
- */
-#define uaccess_try	do {						\
-	current_thread_info()->uaccess_err = 0;				\
-	stac();								\
-	barrier();
-
-#define uaccess_catch(err)						\
-	clac();								\
-	(err) |= (current_thread_info()->uaccess_err ? -EFAULT : 0);	\
-} while (0)
-
 /**
  * __get_user: - Get a simple variable from user space, with less checking.
  * @x:   Variable to store result.
  * @ptr: Source address, in user space.
  *
- * Context: User context only. This function may sleep if pagefaults are
- *          enabled.
+ * Context: User context only.  This function may sleep.
  *
  * This macro copies a single simple variable from user space to kernel
  * space.  It supports simple types like char and int, but not larger
@@ -477,14 +406,12 @@ struct __large_struct { unsigned long buf[100]; };
 
 #define __get_user(x, ptr)						\
 	__get_user_nocheck((x), (ptr), sizeof(*(ptr)))
-
 /**
  * __put_user: - Write a simple value into user space, with less checking.
  * @x:   Value to copy to user space.
  * @ptr: Destination address, in user space.
  *
- * Context: User context only. This function may sleep if pagefaults are
- *          enabled.
+ * Context: User context only.  This function may sleep.
  *
  * This macro copies a single simple value from kernel space to user
  * space.  It supports simple types like char and int, but not larger
@@ -506,131 +433,6 @@ struct __large_struct { unsigned long buf[100]; };
 #define __put_user_unaligned __put_user
 
 /*
- * {get|put}_user_try and catch
- *
- * get_user_try {
- *	get_user_ex(...);
- * } get_user_catch(err)
- */
-#define get_user_try		uaccess_try
-#define get_user_catch(err)	uaccess_catch(err)
-
-#define get_user_ex(x, ptr)	do {					\
-	unsigned long __gue_val;					\
-	__get_user_size_ex((__gue_val), (ptr), (sizeof(*(ptr))));	\
-	(x) = (__force __typeof__(*(ptr)))__gue_val;			\
-} while (0)
-
-#define put_user_try		uaccess_try
-#define put_user_catch(err)	uaccess_catch(err)
-
-#define put_user_ex(x, ptr)						\
-	__put_user_size_ex((__typeof__(*(ptr)))(x), (ptr), sizeof(*(ptr)))
-
-extern unsigned long
-copy_from_user_nmi(void *to, const void __user *from, unsigned long n);
-extern __must_check long
-strncpy_from_user(char *dst, const char __user *src, long count);
-
-extern __must_check long strlen_user(const char __user *str);
-extern __must_check long strnlen_user(const char __user *str, long n);
-
-unsigned long __must_check clear_user(void __user *mem, unsigned long len);
-unsigned long __must_check __clear_user(void __user *mem, unsigned long len);
-
-extern void __cmpxchg_wrong_size(void)
-	__compiletime_error("Bad argument size for cmpxchg");
-
-#define __user_atomic_cmpxchg_inatomic(uval, ptr, old, new, size)	\
-({									\
-	int __ret = 0;							\
-	__typeof__(ptr) __uval = (uval);				\
-	__typeof__(*(ptr)) __old = (old);				\
-	__typeof__(*(ptr)) __new = (new);				\
-	switch (size) {							\
-	case 1:								\
-	{								\
-		asm volatile("\t" ASM_STAC "\n"				\
-			"1:\t" LOCK_PREFIX "cmpxchgb %4, %2\n"		\
-			"2:\t" ASM_CLAC "\n"				\
-			"\t.section .fixup, \"ax\"\n"			\
-			"3:\tmov     %3, %0\n"				\
-			"\tjmp     2b\n"				\
-			"\t.previous\n"					\
-			_ASM_EXTABLE(1b, 3b)				\
-			: "+r" (__ret), "=a" (__old), "+m" (*(ptr))	\
-			: "i" (-EFAULT), "q" (__new), "1" (__old)	\
-			: "memory"					\
-		);							\
-		break;							\
-	}								\
-	case 2:								\
-	{								\
-		asm volatile("\t" ASM_STAC "\n"				\
-			"1:\t" LOCK_PREFIX "cmpxchgw %4, %2\n"		\
-			"2:\t" ASM_CLAC "\n"				\
-			"\t.section .fixup, \"ax\"\n"			\
-			"3:\tmov     %3, %0\n"				\
-			"\tjmp     2b\n"				\
-			"\t.previous\n"					\
-			_ASM_EXTABLE(1b, 3b)				\
-			: "+r" (__ret), "=a" (__old), "+m" (*(ptr))	\
-			: "i" (-EFAULT), "r" (__new), "1" (__old)	\
-			: "memory"					\
-		);							\
-		break;							\
-	}								\
-	case 4:								\
-	{								\
-		asm volatile("\t" ASM_STAC "\n"				\
-			"1:\t" LOCK_PREFIX "cmpxchgl %4, %2\n"		\
-			"2:\t" ASM_CLAC "\n"				\
-			"\t.section .fixup, \"ax\"\n"			\
-			"3:\tmov     %3, %0\n"				\
-			"\tjmp     2b\n"				\
-			"\t.previous\n"					\
-			_ASM_EXTABLE(1b, 3b)				\
-			: "+r" (__ret), "=a" (__old), "+m" (*(ptr))	\
-			: "i" (-EFAULT), "r" (__new), "1" (__old)	\
-			: "memory"					\
-		);							\
-		break;							\
-	}								\
-	case 8:								\
-	{								\
-		if (!IS_ENABLED(CONFIG_X86_64))				\
-			__cmpxchg_wrong_size();				\
-									\
-		asm volatile("\t" ASM_STAC "\n"				\
-			"1:\t" LOCK_PREFIX "cmpxchgq %4, %2\n"		\
-			"2:\t" ASM_CLAC "\n"				\
-			"\t.section .fixup, \"ax\"\n"			\
-			"3:\tmov     %3, %0\n"				\
-			"\tjmp     2b\n"				\
-			"\t.previous\n"					\
-			_ASM_EXTABLE(1b, 3b)				\
-			: "+r" (__ret), "=a" (__old), "+m" (*(ptr))	\
-			: "i" (-EFAULT), "r" (__new), "1" (__old)	\
-			: "memory"					\
-		);							\
-		break;							\
-	}								\
-	default:							\
-		__cmpxchg_wrong_size();					\
-	}								\
-	*__uval = __old;						\
-	__ret;								\
-})
-
-#define user_atomic_cmpxchg_inatomic(uval, ptr, old, new)		\
-({									\
-	access_ok(VERIFY_WRITE, (ptr), sizeof(*(ptr))) ?		\
-		__user_atomic_cmpxchg_inatomic((uval), (ptr),		\
-				(old), (new), sizeof(*(ptr))) :		\
-		-EFAULT;						\
-})
-
-/*
  * movsl can be slow when source and dest are not both 8-byte aligned
  */
 #ifdef CONFIG_X86_INTEL_USERCOPY
@@ -642,108 +444,11 @@ extern struct movsl_mask {
 #define ARCH_HAS_NOCACHE_UACCESS 1
 
 #ifdef CONFIG_X86_32
-# include <asm/uaccess_32.h>
+# include "uaccess_32.h"
 #else
-# include <asm/uaccess_64.h>
+# define ARCH_HAS_SEARCH_EXTABLE
+# include "uaccess_64.h"
 #endif
 
-unsigned long __must_check _copy_from_user(void *to, const void __user *from,
-					   unsigned n);
-unsigned long __must_check _copy_to_user(void __user *to, const void *from,
-					 unsigned n);
-
-#ifdef CONFIG_DEBUG_STRICT_USER_COPY_CHECKS
-# define copy_user_diag __compiletime_error
-#else
-# define copy_user_diag __compiletime_warning
-#endif
-
-extern void copy_user_diag("copy_from_user() buffer size is too small")
-copy_from_user_overflow(void);
-extern void copy_user_diag("copy_to_user() buffer size is too small")
-copy_to_user_overflow(void) __asm__("copy_from_user_overflow");
-
-#undef copy_user_diag
-
-#ifdef CONFIG_DEBUG_STRICT_USER_COPY_CHECKS
-
-extern void
-__compiletime_warning("copy_from_user() buffer size is not provably correct")
-__copy_from_user_overflow(void) __asm__("copy_from_user_overflow");
-#define __copy_from_user_overflow(size, count) __copy_from_user_overflow()
-
-extern void
-__compiletime_warning("copy_to_user() buffer size is not provably correct")
-__copy_to_user_overflow(void) __asm__("copy_from_user_overflow");
-#define __copy_to_user_overflow(size, count) __copy_to_user_overflow()
-
-#else
-
-static inline void
-__copy_from_user_overflow(int size, unsigned long count)
-{
-	WARN(1, "Buffer overflow detected (%d < %lu)!\n", size, count);
-}
-
-#define __copy_to_user_overflow __copy_from_user_overflow
-
-#endif
-
-static inline unsigned long __must_check
-copy_from_user(void *to, const void __user *from, unsigned long n)
-{
-	int sz = __compiletime_object_size(to);
-
-	might_fault();
-
-	/*
-	 * While we would like to have the compiler do the checking for us
-	 * even in the non-constant size case, any false positives there are
-	 * a problem (especially when DEBUG_STRICT_USER_COPY_CHECKS, but even
-	 * without - the [hopefully] dangerous looking nature of the warning
-	 * would make people go look at the respecitive call sites over and
-	 * over again just to find that there's no problem).
-	 *
-	 * And there are cases where it's just not realistic for the compiler
-	 * to prove the count to be in range. For example when multiple call
-	 * sites of a helper function - perhaps in different source files -
-	 * all doing proper range checking, yet the helper function not doing
-	 * so again.
-	 *
-	 * Therefore limit the compile time checking to the constant size
-	 * case, and do only runtime checking for non-constant sizes.
-	 */
-
-	if (likely(sz < 0 || sz >= n))
-		n = _copy_from_user(to, from, n);
-	else if(__builtin_constant_p(n))
-		copy_from_user_overflow();
-	else
-		__copy_from_user_overflow(sz, n);
-
-	return n;
-}
-
-static inline unsigned long __must_check
-copy_to_user(void __user *to, const void *from, unsigned long n)
-{
-	int sz = __compiletime_object_size(from);
-
-	might_fault();
-
-	/* See the comment in copy_from_user() above. */
-	if (likely(sz < 0 || sz >= n))
-		n = _copy_to_user(to, from, n);
-	else if(__builtin_constant_p(n))
-		copy_to_user_overflow();
-	else
-		__copy_to_user_overflow(sz, n);
-
-	return n;
-}
-
-#undef __copy_from_user_overflow
-#undef __copy_to_user_overflow
-
-#endif /* _ASM_X86_UACCESS_H */
+#endif /* ASM_X86__UACCESS_H */
 

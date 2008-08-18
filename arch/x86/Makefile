@@ -186,6 +186,7 @@ KBUILD_CFLAGS += -Wno-sign-compare
 #
 KBUILD_CFLAGS += -fno-asynchronous-unwind-tables
 
+<<<<<<< HEAD
 KBUILD_CFLAGS += $(mflags-y)
 KBUILD_AFLAGS += $(mflags-y)
 
@@ -194,6 +195,26 @@ archscripts: scripts_basic
 
 ###
 # Syscall table generation
+=======
+###
+# Sub architecture support
+# fcore-y is linked before mcore-y files.
+
+# Default subarch .c files
+mcore-y  := arch/x86/mach-default/
+
+# Voyager subarch support
+mflags-$(CONFIG_X86_VOYAGER)	:= -Iarch/x86/include/asm/mach-voyager
+mcore-$(CONFIG_X86_VOYAGER)	:= arch/x86/mach-voyager/
+
+# generic subarchitecture
+mflags-$(CONFIG_X86_GENERICARCH):= -Iarch/x86/include/asm/mach-generic
+fcore-$(CONFIG_X86_GENERICARCH)	+= arch/x86/mach-generic/
+mcore-$(CONFIG_X86_GENERICARCH)	:= arch/x86/mach-default/
+
+# default subarch .h files
+mflags-y += -Iarch/x86/include/asm/mach-default
+>>>>>>> bb89855... x86, um: ... and asm-x86 move
 
 archheaders:
 	$(Q)$(MAKE) $(build)=arch/x86/entry/syscalls all

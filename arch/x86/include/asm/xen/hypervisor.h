@@ -30,36 +30,53 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef _ASM_X86_XEN_HYPERVISOR_H
-#define _ASM_X86_XEN_HYPERVISOR_H
+#ifndef ASM_X86__XEN__HYPERVISOR_H
+#define ASM_X86__XEN__HYPERVISOR_H
 
+#include <linux/types.h>
+#include <linux/kernel.h>
+
+#include <xen/interface/xen.h>
+#include <xen/interface/version.h>
+
+#include <asm/ptrace.h>
+#include <asm/page.h>
+#include <asm/desc.h>
+#if defined(__i386__)
+#  ifdef CONFIG_X86_PAE
+#   include <asm-generic/pgtable-nopud.h>
+#  else
+#   include <asm-generic/pgtable-nopmd.h>
+#  endif
+#endif
+#include <asm/xen/hypercall.h>
+
+/* arch/i386/kernel/setup.c */
 extern struct shared_info *HYPERVISOR_shared_info;
 extern struct start_info *xen_start_info;
 
-#include <asm/processor.h>
+/* arch/i386/mach-xen/evtchn.c */
+/* Force a proper event-channel callback from Xen. */
+extern void force_evtchn_callback(void);
 
-static inline uint32_t xen_cpuid_base(void)
-{
-	return hypervisor_cpuid_base("XenVMMXenVMM", 2);
-}
+/* Turn jiffies into Xen system time. */
+u64 jiffies_to_st(unsigned long jiffies);
 
-#ifdef CONFIG_XEN
-extern bool xen_hvm_need_lapic(void);
 
-static inline bool xen_x2apic_para_available(void)
-{
-	return xen_hvm_need_lapic();
-}
-#else
-static inline bool xen_x2apic_para_available(void)
-{
-	return (xen_cpuid_base() != 0);
-}
-#endif
+#define MULTI_UVMFLAGS_INDEX 3
+#define MULTI_UVMDOMID_INDEX 4
 
-#ifdef CONFIG_HOTPLUG_CPU
-void xen_arch_register_cpu(int num);
-void xen_arch_unregister_cpu(int num);
-#endif
+enum xen_domain_type {
+	XEN_NATIVE,
+	XEN_PV_DOMAIN,
+	XEN_HVM_DOMAIN,
+};
 
-#endif /* _ASM_X86_XEN_HYPERVISOR_H */
+extern enum xen_domain_type xen_domain_type;
+
+#define xen_domain()		(xen_domain_type != XEN_NATIVE)
+#define xen_pv_domain()		(xen_domain_type == XEN_PV_DOMAIN)
+#define xen_initial_domain()	(xen_pv_domain() && xen_start_info->flags & SIF_INITDOMAIN)
+#define xen_hvm_domain()	(xen_domain_type == XEN_HVM_DOMAIN)
+
+#endif /* ASM_X86__XEN__HYPERVISOR_H */

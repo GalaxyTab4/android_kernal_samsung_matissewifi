@@ -1,21 +1,49 @@
-#ifndef _ASM_X86_KEXEC_H
-#define _ASM_X86_KEXEC_H
+#ifndef ASM_X86__KEXEC_H
+#define ASM_X86__KEXEC_H
 
 #ifdef CONFIG_X86_32
 # define PA_CONTROL_PAGE	0
 # define VA_CONTROL_PAGE	1
 # define PA_PGD			2
-# define PA_SWAP_PAGE		3
-# define PAGES_NR		4
+# define VA_PGD			3
+# define PA_PTE_0		4
+# define VA_PTE_0		5
+# define PA_PTE_1		6
+# define VA_PTE_1		7
+# define PA_SWAP_PAGE		8
+# ifdef CONFIG_X86_PAE
+#  define PA_PMD_0		9
+#  define VA_PMD_0		10
+#  define PA_PMD_1		11
+#  define VA_PMD_1		12
+#  define PAGES_NR		13
+# else
+#  define PAGES_NR		9
+# endif
 #else
 # define PA_CONTROL_PAGE	0
 # define VA_CONTROL_PAGE	1
-# define PA_TABLE_PAGE		2
-# define PA_SWAP_PAGE		3
-# define PAGES_NR		4
+# define PA_PGD			2
+# define VA_PGD			3
+# define PA_PUD_0		4
+# define VA_PUD_0		5
+# define PA_PMD_0		6
+# define VA_PMD_0		7
+# define PA_PTE_0		8
+# define VA_PTE_0		9
+# define PA_PUD_1		10
+# define VA_PUD_1		11
+# define PA_PMD_1		12
+# define VA_PMD_1		13
+# define PA_PTE_1		14
+# define VA_PTE_1		15
+# define PA_TABLE_PAGE		16
+# define PAGES_NR		17
 #endif
 
+#ifdef CONFIG_X86_32
 # define KEXEC_CONTROL_CODE_MAX_SIZE	2048
+#endif
 
 #ifndef __ASSEMBLY__
 
@@ -23,9 +51,6 @@
 
 #include <asm/page.h>
 #include <asm/ptrace.h>
-#include <asm/bootparam.h>
-
-struct kimage;
 
 /*
  * KEXEC_SOURCE_MEMORY_LIMIT maximum page get_free_page can return.
@@ -51,11 +76,11 @@ struct kimage;
 # define vmcore_elf_check_arch_cross(x) ((x)->e_machine == EM_X86_64)
 #else
 /* Maximum physical address we can use pages from */
-# define KEXEC_SOURCE_MEMORY_LIMIT      (MAXMEM-1)
+# define KEXEC_SOURCE_MEMORY_LIMIT      (0xFFFFFFFFFFUL)
 /* Maximum address we can reach in physical address mode */
-# define KEXEC_DESTINATION_MEMORY_LIMIT (MAXMEM-1)
+# define KEXEC_DESTINATION_MEMORY_LIMIT (0xFFFFFFFFFFUL)
 /* Maximum address we can use for the control pages */
-# define KEXEC_CONTROL_MEMORY_LIMIT     (MAXMEM-1)
+# define KEXEC_CONTROL_MEMORY_LIMIT     (0xFFFFFFFFFFUL)
 
 /* Allocate one page for the pdp and the second for the code */
 # define KEXEC_CONTROL_PAGE_SIZE  (4096UL + 4096UL)
@@ -63,10 +88,6 @@ struct kimage;
 /* The native architecture */
 # define KEXEC_ARCH KEXEC_ARCH_X86_64
 #endif
-
-/* Memory to backup during crash kdump */
-#define KEXEC_BACKUP_SRC_START	(0UL)
-#define KEXEC_BACKUP_SRC_END	(640 * 1024UL)	/* 640K */
 
 /*
  * CPU does not save ss and sp on stack if execution is already
@@ -143,74 +164,12 @@ relocate_kernel(unsigned long indirection_page,
 		unsigned int has_pae,
 		unsigned int preserve_context);
 #else
-unsigned long
+NORET_TYPE void
 relocate_kernel(unsigned long indirection_page,
 		unsigned long page_list,
-		unsigned long start_address,
-		unsigned int preserve_context);
+		unsigned long start_address) ATTRIB_NORET;
 #endif
-
-#define ARCH_HAS_KIMAGE_ARCH
-
-#ifdef CONFIG_X86_32
-struct kimage_arch {
-	pgd_t *pgd;
-#ifdef CONFIG_X86_PAE
-	pmd_t *pmd0;
-	pmd_t *pmd1;
-#endif
-	pte_t *pte0;
-	pte_t *pte1;
-};
-#else
-struct kimage_arch {
-	pud_t *pud;
-	pmd_t *pmd;
-	pte_t *pte;
-	/* Details of backup region */
-	unsigned long backup_src_start;
-	unsigned long backup_src_sz;
-
-	/* Physical address of backup segment */
-	unsigned long backup_load_addr;
-
-	/* Core ELF header buffer */
-	void *elf_headers;
-	unsigned long elf_headers_sz;
-	unsigned long elf_load_addr;
-};
-#endif /* CONFIG_X86_32 */
-
-#ifdef CONFIG_X86_64
-/*
- * Number of elements and order of elements in this structure should match
- * with the ones in arch/x86/purgatory/entry64.S. If you make a change here
- * make an appropriate change in purgatory too.
- */
-struct kexec_entry64_regs {
-	uint64_t rax;
-	uint64_t rcx;
-	uint64_t rdx;
-	uint64_t rbx;
-	uint64_t rsp;
-	uint64_t rbp;
-	uint64_t rsi;
-	uint64_t rdi;
-	uint64_t r8;
-	uint64_t r9;
-	uint64_t r10;
-	uint64_t r11;
-	uint64_t r12;
-	uint64_t r13;
-	uint64_t r14;
-	uint64_t r15;
-	uint64_t rip;
-};
-#endif
-
-typedef void crash_vmclear_fn(void);
-extern crash_vmclear_fn __rcu *crash_vmclear_loaded_vmcss;
 
 #endif /* __ASSEMBLY__ */
 
-#endif /* _ASM_X86_KEXEC_H */
+#endif /* ASM_X86__KEXEC_H */

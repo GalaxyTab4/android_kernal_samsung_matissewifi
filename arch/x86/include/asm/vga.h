@@ -4,8 +4,8 @@
  *	(c) 1998 Martin Mares <mj@ucw.cz>
  */
 
-#ifndef _ASM_X86_VGA_H
-#define _ASM_X86_VGA_H
+#ifndef ASM_X86__VGA_H
+#define ASM_X86__VGA_H
 
 /*
  *	On the PC, we can just recalculate addresses and then
@@ -17,4 +17,4 @@
 #define vga_readb(x) (*(x))
 #define vga_writeb(x, y) (*(y) = (x))
 
-#endif /* _ASM_X86_VGA_H */
+#endif /* ASM_X86__VGA_H */

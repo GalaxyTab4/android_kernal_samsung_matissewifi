@@ -1,5 +1,5 @@
-#ifndef _ASM_X86_LGUEST_H
-#define _ASM_X86_LGUEST_H
+#ifndef ASM_X86__LGUEST_H
+#define ASM_X86__LGUEST_H
 
 #define GDT_ENTRY_LGUEST_CS	10
 #define GDT_ENTRY_LGUEST_DS	11
@@ -11,19 +11,25 @@
 
 #define GUEST_PL 1
 
-/* Page for Switcher text itself, then two pages per cpu */
-#define TOTAL_SWITCHER_PAGES (1 + 2 * nr_cpu_ids)
+/* Every guest maps the core switcher code. */
+#define SHARED_SWITCHER_PAGES \
+	DIV_ROUND_UP(end_switcher_text - start_switcher_text, PAGE_SIZE)
+/* Pages for switcher itself, then two pages per cpu */
+#define TOTAL_SWITCHER_PAGES (SHARED_SWITCHER_PAGES + 2 * NR_CPUS)
 
-/* Where we map the Switcher, in both Host and Guest. */
-extern unsigned long switcher_addr;
+/* We map at -4M for ease of mapping into the guest (one PTE page). */
+#define SWITCHER_ADDR 0xFFC00000
 
 /* Found in switcher.S */
 extern unsigned long default_idt_entries[];
 
-/* Declarations for definitions in arch/x86/lguest/head_32.S */
-extern char lguest_noirq_iret[];
+/* Declarations for definitions in lguest_guest.S */
+extern char lguest_noirq_start[], lguest_noirq_end[];
 extern const char lgstart_cli[], lgend_cli[];
+extern const char lgstart_sti[], lgend_sti[];
+extern const char lgstart_popf[], lgend_popf[];
 extern const char lgstart_pushf[], lgend_pushf[];
+extern const char lgstart_iret[], lgend_iret[];
 
 extern void lguest_iret(void);
 extern void lguest_init(void);
@@ -80,10 +86,9 @@ static inline void lguest_set_ts(void)
 }
 
 /* Full 4G segment descriptors, suitable for CS and DS. */
-#define FULL_EXEC_SEGMENT \
-	((struct desc_struct)GDT_ENTRY_INIT(0xc09b, 0, 0xfffff))
-#define FULL_SEGMENT ((struct desc_struct)GDT_ENTRY_INIT(0xc093, 0, 0xfffff))
+#define FULL_EXEC_SEGMENT ((struct desc_struct){ { {0x0000ffff, 0x00cf9b00} } })
+#define FULL_SEGMENT ((struct desc_struct){ { {0x0000ffff, 0x00cf9300} } })
 
 #endif /* __ASSEMBLY__ */
 
-#endif /* _ASM_X86_LGUEST_H */
+#endif /* ASM_X86__LGUEST_H */

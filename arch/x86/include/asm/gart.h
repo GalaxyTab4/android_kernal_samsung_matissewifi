@@ -1,5 +1,5 @@
-#ifndef _ASM_X86_GART_H
-#define _ASM_X86_GART_H
+#ifndef ASM_X86__GART_H
+#define ASM_X86__GART_H
 
 #include <asm/e820.h>
 
@@ -17,7 +17,6 @@ extern int fix_aperture;
 #define GARTEN		(1<<0)
 #define DISGARTCPU	(1<<4)
 #define DISGARTIO	(1<<5)
-#define DISTLBWALKPRB	(1<<6)
 
 /* GART cache control register bits. */
 #define INVGART		(1<<0)
@@ -28,64 +27,25 @@ extern int fix_aperture;
 #define AMD64_GARTAPERTUREBASE	0x94
 #define AMD64_GARTTABLEBASE	0x98
 #define AMD64_GARTCACHECTL	0x9c
-
-#ifdef CONFIG_GART_IOMMU
-extern int gart_iommu_aperture;
-extern int gart_iommu_aperture_allowed;
-extern int gart_iommu_aperture_disabled;
-
-extern void early_gart_iommu_check(void);
-extern int gart_iommu_init(void);
-extern void __init gart_parse_options(char *);
-extern int gart_iommu_hole_init(void);
-
-#else
-#define gart_iommu_aperture            0
-#define gart_iommu_aperture_allowed    0
-#define gart_iommu_aperture_disabled   1
-
-static inline void early_gart_iommu_check(void)
-{
-}
-static inline void gart_parse_options(char *options)
-{
-}
-static inline int gart_iommu_hole_init(void)
-{
-	return -ENODEV;
-}
-#endif
+#define AMD64_GARTEN		(1<<0)
 
 extern int agp_amd64_init(void);
-
-static inline void gart_set_size_and_enable(struct pci_dev *dev, u32 order)
-{
-	u32 ctl;
-
-	/*
-	 * Don't enable translation but enable GART IO and CPU accesses.
-	 * Also, set DISTLBWALKPRB since GART tables memory is UC.
-	 */
-	ctl = order << 1;
-
-	pci_write_config_dword(dev, AMD64_GARTAPERTURECTL, ctl);
-}
 
 static inline void enable_gart_translation(struct pci_dev *dev, u64 addr)
 {
 	u32 tmp, ctl;
 
-	/* address of the mappings table */
-	addr >>= 12;
-	tmp = (u32) addr<<4;
-	tmp &= ~0xf;
-	pci_write_config_dword(dev, AMD64_GARTTABLEBASE, tmp);
+        /* address of the mappings table */
+        addr >>= 12;
+        tmp = (u32) addr<<4;
+        tmp &= ~0xf;
+        pci_write_config_dword(dev, AMD64_GARTTABLEBASE, tmp);
 
-	/* Enable GART translation for this hammer. */
-	pci_read_config_dword(dev, AMD64_GARTAPERTURECTL, &ctl);
-	ctl |= GARTEN | DISTLBWALKPRB;
-	ctl &= ~(DISGARTCPU | DISGARTIO);
-	pci_write_config_dword(dev, AMD64_GARTAPERTURECTL, ctl);
+        /* Enable GART translation for this hammer. */
+        pci_read_config_dword(dev, AMD64_GARTAPERTURECTL, &ctl);
+        ctl |= GARTEN;
+        ctl &= ~(DISGARTCPU | DISGARTIO);
+        pci_write_config_dword(dev, AMD64_GARTAPERTURECTL, ctl);
 }
 
 static inline int aperture_valid(u64 aper_base, u32 aper_size, u32 min_size)
@@ -110,4 +70,4 @@ static inline int aperture_valid(u64 aper_base, u32 aper_size, u32 min_size)
 	return 1;
 }
 
-#endif /* _ASM_X86_GART_H */
+#endif /* ASM_X86__GART_H */

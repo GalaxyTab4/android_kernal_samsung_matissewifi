@@ -1,7 +1,7 @@
 /*
  * Access to user system call parameters and results
  *
- * Copyright (C) 2008-2009 Red Hat, Inc.  All rights reserved.
+ * Copyright (C) 2008 Red Hat, Inc.  All rights reserved.
  *
  * This copyrighted material is made available to anyone wishing to use,
  * modify, copy, or redistribute it subject to the terms and conditions
@@ -10,38 +10,19 @@
  * See asm-generic/syscall.h for descriptions of what we must do here.
  */
 
-#ifndef _ASM_X86_SYSCALL_H
-#define _ASM_X86_SYSCALL_H
+#ifndef _ASM_SYSCALL_H
+#define _ASM_SYSCALL_H	1
 
-#include <uapi/linux/audit.h>
 #include <linux/sched.h>
 #include <linux/err.h>
-#include <asm/asm-offsets.h>	/* For NR_syscalls */
-#include <asm/thread_info.h>	/* for TS_COMPAT */
-#include <asm/unistd.h>
 
-typedef asmlinkage long (*sys_call_ptr_t)(unsigned long, unsigned long,
-					  unsigned long, unsigned long,
-					  unsigned long, unsigned long);
-extern const sys_call_ptr_t sys_call_table[];
-
-#if defined(CONFIG_X86_32)
-#define ia32_sys_call_table sys_call_table
-#define __NR_syscall_compat_max __NR_syscall_max
-#define IA32_NR_syscalls NR_syscalls
-#endif
-
-#if defined(CONFIG_IA32_EMULATION)
-extern const sys_call_ptr_t ia32_sys_call_table[];
-#endif
-
-/*
- * Only the low 32 bits of orig_ax are meaningful, so we return int.
- * This importantly ignores the high bits on 64-bit, so comparisons
- * sign-extend the low 32 bits.
- */
-static inline int syscall_get_nr(struct task_struct *task, struct pt_regs *regs)
+static inline long syscall_get_nr(struct task_struct *task,
+				  struct pt_regs *regs)
 {
+	/*
+	 * We always sign-extend a -1 value being set here,
+	 * so this is always either -1L or a syscall number.
+	 */
 	return regs->orig_ax;
 }
 
@@ -103,11 +84,6 @@ static inline void syscall_set_arguments(struct task_struct *task,
 	memcpy(&regs->bx + i, args, n * sizeof(args[0]));
 }
 
-static inline int syscall_get_arch(void)
-{
-	return AUDIT_ARCH_I386;
-}
-
 #else	 /* CONFIG_X86_64 */
 
 static inline void syscall_get_arguments(struct task_struct *task,
@@ -117,26 +93,26 @@ static inline void syscall_get_arguments(struct task_struct *task,
 {
 # ifdef CONFIG_IA32_EMULATION
 	if (task_thread_info(task)->status & TS_COMPAT)
-		switch (i) {
-		case 0:
-			if (!n--) break;
-			*args++ = regs->bx;
-		case 1:
-			if (!n--) break;
-			*args++ = regs->cx;
-		case 2:
-			if (!n--) break;
-			*args++ = regs->dx;
-		case 3:
-			if (!n--) break;
-			*args++ = regs->si;
-		case 4:
-			if (!n--) break;
-			*args++ = regs->di;
-		case 5:
+		switch (i + n) {
+		case 6:
 			if (!n--) break;
 			*args++ = regs->bp;
-		case 6:
+		case 5:
+			if (!n--) break;
+			*args++ = regs->di;
+		case 4:
+			if (!n--) break;
+			*args++ = regs->si;
+		case 3:
+			if (!n--) break;
+			*args++ = regs->dx;
+		case 2:
+			if (!n--) break;
+			*args++ = regs->cx;
+		case 1:
+			if (!n--) break;
+			*args++ = regs->bx;
+		case 0:
 			if (!n--) break;
 		default:
 			BUG();
@@ -144,26 +120,26 @@ static inline void syscall_get_arguments(struct task_struct *task,
 		}
 	else
 # endif
-		switch (i) {
-		case 0:
-			if (!n--) break;
-			*args++ = regs->di;
-		case 1:
-			if (!n--) break;
-			*args++ = regs->si;
-		case 2:
-			if (!n--) break;
-			*args++ = regs->dx;
-		case 3:
-			if (!n--) break;
-			*args++ = regs->r10;
-		case 4:
-			if (!n--) break;
-			*args++ = regs->r8;
-		case 5:
+		switch (i + n) {
+		case 6:
 			if (!n--) break;
 			*args++ = regs->r9;
-		case 6:
+		case 5:
+			if (!n--) break;
+			*args++ = regs->r8;
+		case 4:
+			if (!n--) break;
+			*args++ = regs->r10;
+		case 3:
+			if (!n--) break;
+			*args++ = regs->dx;
+		case 2:
+			if (!n--) break;
+			*args++ = regs->si;
+		case 1:
+			if (!n--) break;
+			*args++ = regs->di;
+		case 0:
 			if (!n--) break;
 		default:
 			BUG();
@@ -178,78 +154,58 @@ static inline void syscall_set_arguments(struct task_struct *task,
 {
 # ifdef CONFIG_IA32_EMULATION
 	if (task_thread_info(task)->status & TS_COMPAT)
-		switch (i) {
-		case 0:
-			if (!n--) break;
-			regs->bx = *args++;
-		case 1:
-			if (!n--) break;
-			regs->cx = *args++;
-		case 2:
-			if (!n--) break;
-			regs->dx = *args++;
-		case 3:
-			if (!n--) break;
-			regs->si = *args++;
-		case 4:
-			if (!n--) break;
-			regs->di = *args++;
-		case 5:
+		switch (i + n) {
+		case 6:
 			if (!n--) break;
 			regs->bp = *args++;
-		case 6:
+		case 5:
+			if (!n--) break;
+			regs->di = *args++;
+		case 4:
+			if (!n--) break;
+			regs->si = *args++;
+		case 3:
+			if (!n--) break;
+			regs->dx = *args++;
+		case 2:
+			if (!n--) break;
+			regs->cx = *args++;
+		case 1:
+			if (!n--) break;
+			regs->bx = *args++;
+		case 0:
 			if (!n--) break;
 		default:
 			BUG();
-			break;
 		}
 	else
 # endif
-		switch (i) {
-		case 0:
-			if (!n--) break;
-			regs->di = *args++;
-		case 1:
-			if (!n--) break;
-			regs->si = *args++;
-		case 2:
-			if (!n--) break;
-			regs->dx = *args++;
-		case 3:
-			if (!n--) break;
-			regs->r10 = *args++;
-		case 4:
-			if (!n--) break;
-			regs->r8 = *args++;
-		case 5:
+		switch (i + n) {
+		case 6:
 			if (!n--) break;
 			regs->r9 = *args++;
-		case 6:
+		case 5:
+			if (!n--) break;
+			regs->r8 = *args++;
+		case 4:
+			if (!n--) break;
+			regs->r10 = *args++;
+		case 3:
+			if (!n--) break;
+			regs->dx = *args++;
+		case 2:
+			if (!n--) break;
+			regs->si = *args++;
+		case 1:
+			if (!n--) break;
+			regs->di = *args++;
+		case 0:
 			if (!n--) break;
 		default:
 			BUG();
-			break;
 		}
 }
 
-static inline int syscall_get_arch(void)
-{
-#ifdef CONFIG_IA32_EMULATION
-	/*
-	 * TS_COMPAT is set for 32-bit syscall entry and then
-	 * remains set until we return to user mode.
-	 *
-	 * TIF_IA32 tasks should always have TS_COMPAT set at
-	 * system call time.
-	 *
-	 * x32 tasks should be considered AUDIT_ARCH_X86_64.
-	 */
-	if (task_thread_info(current)->status & TS_COMPAT)
-		return AUDIT_ARCH_I386;
-#endif
-	/* Both x32 and x86_64 are considered "64-bit". */
-	return AUDIT_ARCH_X86_64;
-}
 #endif	/* CONFIG_X86_32 */
 
-#endif	/* _ASM_X86_SYSCALL_H */
+#endif	/* _ASM_SYSCALL_H */
