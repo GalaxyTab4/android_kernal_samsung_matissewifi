@@ -321,16 +321,7 @@ static inline void smk_ad_init(struct smk_audit_info *a, const char *func,
 {
 	memset(a, 0, sizeof(*a));
 	a->a.type = type;
-	a->a.smack_audit_data = &a->sad;
-	a->a.smack_audit_data->function = func;
-}
-
-static inline void smk_ad_init_net(struct smk_audit_info *a, const char *func,
-				   char type, struct lsm_network_audit *net)
-{
-	smk_ad_init(a, func, type);
-	memset(net, 0, sizeof(*net));
-	a->a.u.net = net;
+	a->a.lsm_priv.smack_audit_data.function = func;
 }
 
 static inline void smk_ad_setfield_u_tsk(struct smk_audit_info *a,
