@@ -3490,12 +3490,10 @@ static int selinux_kernel_module_request(char *kmod_name)
 {
 	u32 sid;
 	struct common_audit_data ad;
-	struct selinux_audit_data sad = {0,};
 
 	sid = task_sid(current);
 
 	COMMON_AUDIT_DATA_INIT(&ad, KMOD);
-	ad.selinux_audit_data = &sad;
 	ad.u.kmod_name = kmod_name;
 
 	return avc_has_perm(sid, SECINITSID_KERNEL, SECCLASS_SYSTEM,

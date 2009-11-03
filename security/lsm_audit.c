@@ -401,17 +401,16 @@ static void dump_common_audit_data(struct audit_buffer *ab,
 		}
 		break;
 #endif
+	case LSM_AUDIT_DATA_KMOD:
+		audit_log_format(ab, " kmod=");
+		audit_log_untrustedstring(ab, a->u.kmod_name);
+		break;
 	} /* switch (a->type) */
 }
 
 /**
  * common_lsm_audit - generic LSM auditing function
  * @a:  auxiliary audit data
-<<<<<<< HEAD
- * @pre_audit: lsm-specific pre-audit callback
- * @post_audit: lsm-specific post-audit callback
-=======
->>>>>>> 6e837fb... smack: implement logging V3
  *
  * setup the audit buffer for common security information
  * uses callback to print LSM specific information

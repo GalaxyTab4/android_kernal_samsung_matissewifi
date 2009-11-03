@@ -415,6 +415,16 @@ static int cap_kernel_module_request(char *kmod_name)
 	return 0;
 }
 
+static int cap_task_setuid(uid_t id0, uid_t id1, uid_t id2, int flags)
+{
+	return 0;
+}
+
+static int cap_task_setgid(gid_t id0, gid_t id1, gid_t id2, int flags)
+{
+	return 0;
+}
+
 static int cap_task_setpgid(struct task_struct *p, pid_t pgid)
 {
 	return 0;
