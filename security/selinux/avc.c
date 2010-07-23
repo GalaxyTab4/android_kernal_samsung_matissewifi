@@ -752,10 +752,10 @@ inline int avc_audit(u32 ssid, u32 tsid,
 	struct common_audit_data stack_data;
 	u32 denied, audited;
 	denied = requested & ~avd->allowed;
-	if (unlikely(denied)) {
+	if (denied) {
 		audited = denied & avd->auditdeny;
 		/*
-		 * a->selinux_audit_data->auditdeny is TRICKY!  Setting a bit in
+		 * a->selinux_audit_data.auditdeny is TRICKY!  Setting a bit in
 		 * this field means that ANY denials should NOT be audited if
 		 * the policy contains an explicit dontaudit rule for that
 		 * permission.  Take notice that this is unrelated to the
@@ -764,15 +764,15 @@ inline int avc_audit(u32 ssid, u32 tsid,
 		 *
 		 * denied == READ
 		 * avd.auditdeny & ACCESS == 0 (not set means explicit rule)
-		 * selinux_audit_data->auditdeny & ACCESS == 1
+		 * selinux_audit_data.auditdeny & ACCESS == 1
 		 *
 		 * We will NOT audit the denial even though the denied
 		 * permission was READ and the auditdeny checks were for
 		 * ACCESS
 		 */
 		if (a &&
-		    a->selinux_audit_data->auditdeny &&
-		    !(a->selinux_audit_data->auditdeny & avd->auditdeny))
+		    a->selinux_audit_data.auditdeny &&
+		    !(a->selinux_audit_data.auditdeny & avd->auditdeny))
 			audited = 0;
 	} else if (result)
 		audited = denied = requested;
