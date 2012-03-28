@@ -30,12 +30,7 @@
 #include <linux/poll.h>
 #include <linux/ioctl.h>
 #include <linux/wait.h>
-#include <linux/mm.h>
-#include <linux/uaccess.h>
-#include <linux/debugfs.h>
-#include <linux/seq_file.h>
-#include <linux/timer.h>
-#include <linux/jiffies.h>
+#include <asm/uaccess.h>
 #include "dmxdev.h"
 
 static int debug;

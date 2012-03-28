@@ -3,7 +3,6 @@
 
 #include <linux/kernel.h>
 #include <linux/atomic.h>
-#include <linux/bug.h>
 
 struct task_struct;
 

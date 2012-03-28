@@ -70,6 +70,9 @@
 #include <linux/uaccess.h>
 
 
+#define OUR_NAME "sc520_wdt"
+#define PFX OUR_NAME ": "
+
 /*
  * The AMD Elan SC520 timeout value is 492us times a power of 2 (0-7)
  *

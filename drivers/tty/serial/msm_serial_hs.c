@@ -62,164 +62,157 @@
 #include <asm/atomic.h>
 #include <asm/irq.h>
 
-#include <mach/sps.h>
-#include <mach/msm_serial_hs.h>
-#include <mach/msm_bus.h>
-#include <mach/msm_ipc_logging.h>
-#include "msm_serial_hs_hwreg.h"
-#define UART_SPS_CONS_PERIPHERAL 0
-#define UART_SPS_PROD_PERIPHERAL 1
+#include <mach/hardware.h>
+#include <mach/dma.h>
+#include <linux/platform_data/msm_serial_hs.h>
 
-static void *ipc_msm_hs_log_ctxt;
-#define IPC_MSM_HS_LOG_PAGES 30
+/* HSUART Registers */
+#define UARTDM_MR1_ADDR 0x0
+#define UARTDM_MR2_ADDR 0x4
 
+/* Data Mover result codes */
+#define RSLT_FIFO_CNTR_BMSK (0xE << 28)
+#define RSLT_VLD            BIT(1)
 
-#define _DW_ENABLED
+/* write only register */
+#define UARTDM_CSR_ADDR 0x8
+#define UARTDM_CSR_115200 0xFF
+#define UARTDM_CSR_57600  0xEE
+#define UARTDM_CSR_38400  0xDD
+#define UARTDM_CSR_28800  0xCC
+#define UARTDM_CSR_19200  0xBB
+#define UARTDM_CSR_14400  0xAA
+#define UARTDM_CSR_9600   0x99
+#define UARTDM_CSR_7200   0x88
+#define UARTDM_CSR_4800   0x77
+#define UARTDM_CSR_3600   0x66
+#define UARTDM_CSR_2400   0x55
+#define UARTDM_CSR_1200   0x44
+#define UARTDM_CSR_600    0x33
+#define UARTDM_CSR_300    0x22
+#define UARTDM_CSR_150    0x11
+#define UARTDM_CSR_75     0x00
 
-#ifdef _DW_ENABLED
-#define MAX_DUALWAVE_MESSAGE_SIZE 128
+/* write only register */
+#define UARTDM_TF_ADDR 0x70
+#define UARTDM_TF2_ADDR 0x74
+#define UARTDM_TF3_ADDR 0x78
+#define UARTDM_TF4_ADDR 0x7C
 
-#include <linux/syscalls.h>
-#include <asm/uaccess.h>
+/* write only register */
+#define UARTDM_CR_ADDR 0x10
+#define UARTDM_IMR_ADDR 0x14
 
-#define DUALWAVE_INACTIVE	0
-#define DUALWAVE_PLAYBACK	1
-#define DUALWAVE_CAPTURE	2
+#define UARTDM_IPR_ADDR 0x18
+#define UARTDM_TFWR_ADDR 0x1c
+#define UARTDM_RFWR_ADDR 0x20
+#define UARTDM_HCR_ADDR 0x24
+#define UARTDM_DMRX_ADDR 0x34
+#define UARTDM_IRDA_ADDR 0x38
+#define UARTDM_DMEN_ADDR 0x3c
 
-extern int send_uevent_wh_ble_info(char *prEnvInfoLists[3]);
-extern int checkDualWaveStatus(void);
+/* UART_DM_NO_CHARS_FOR_TX */
+#define UARTDM_NCF_TX_ADDR 0x40
 
-#define GET_CUR_TIME_ON(tCurTimespec)											\
-	do {																		\
-		long int llErrTime = 0;													\
-		struct timespec tMyTime;												\
-		mm_segment_t tOldfs;													\
-		tOldfs = get_fs();														\
-		set_fs(KERNEL_DS);														\
-																				\
-		llErrTime = sys_clock_gettime(CLOCK_REALTIME, &tMyTime);				\
-		set_fs(tOldfs);															\
-																				\
-		tCurTimespec = tMyTime;													\
-	}while(0)
+#define UARTDM_BADR_ADDR 0x44
 
-char *g_szSysTime;
-char *g_szRefTime;	
+#define UARTDM_SIM_CFG_ADDR 0x80
+/* Read Only register */
+#define UARTDM_SR_ADDR 0x8
 
-inline void UpdateTime(char *pchBuffer, int iLen)
-{
-	struct timespec tSysTimespec;
-	char *pEnv[3];
+/* Read Only register */
+#define UARTDM_RF_ADDR  0x70
+#define UARTDM_RF2_ADDR 0x74
+#define UARTDM_RF3_ADDR 0x78
+#define UARTDM_RF4_ADDR 0x7C
 
+/* Read Only register */
+#define UARTDM_MISR_ADDR 0x10
 
-	int iRead=0;
-	int iEventLength=0;
-	int iNumHciCmdPackets=0;
-	unsigned short *psCmdOpCode =NULL;
-	int iStatus = 0;
-	unsigned int *puiBtClock;
+/* Read Only register */
+#define UARTDM_ISR_ADDR 0x14
+#define UARTDM_RX_TOTAL_SNAP_ADDR 0x38
 
-	GET_CUR_TIME_ON(tSysTimespec);
+#define UARTDM_RXFS_ADDR 0x50
 
-	g_szSysTime = kzalloc(MAX_DUALWAVE_MESSAGE_SIZE, GFP_KERNEL);
-	g_szRefTime = kzalloc(MAX_DUALWAVE_MESSAGE_SIZE, GFP_KERNEL);
+/* Register field Mask Mapping */
+#define UARTDM_SR_PAR_FRAME_BMSK        BIT(5)
+#define UARTDM_SR_OVERRUN_BMSK          BIT(4)
+#define UARTDM_SR_TXEMT_BMSK            BIT(3)
+#define UARTDM_SR_TXRDY_BMSK            BIT(2)
+#define UARTDM_SR_RXRDY_BMSK            BIT(0)
 
-	pEnv[0] = g_szSysTime;
-	pEnv[1] = g_szRefTime;
-	pEnv[2] = NULL;
+#define UARTDM_CR_TX_DISABLE_BMSK       BIT(3)
+#define UARTDM_CR_RX_DISABLE_BMSK       BIT(1)
+#define UARTDM_CR_TX_EN_BMSK            BIT(2)
+#define UARTDM_CR_RX_EN_BMSK            BIT(0)
 
+/* UARTDM_CR channel_comman bit value (register field is bits 8:4) */
+#define RESET_RX                0x10
+#define RESET_TX                0x20
+#define RESET_ERROR_STATUS      0x30
+#define RESET_BREAK_INT         0x40
+#define START_BREAK             0x50
+#define STOP_BREAK              0x60
+#define RESET_CTS               0x70
+#define RESET_STALE_INT         0x80
+#define RFR_LOW                 0xD0
+#define RFR_HIGH                0xE0
+#define CR_PROTECTION_EN        0x100
+#define STALE_EVENT_ENABLE      0x500
+#define STALE_EVENT_DISABLE     0x600
+#define FORCE_STALE_EVENT       0x400
+#define CLEAR_TX_READY          0x300
+#define RESET_TX_ERROR          0x800
+#define RESET_TX_DONE           0x810
 
-	switch (pchBuffer[iRead++])
-	{
-		case 0x04:
-		{
-			if(pchBuffer[iRead++] == 0x0E)
-			{
-				iEventLength = pchBuffer[iRead++];
-				iNumHciCmdPackets = pchBuffer[iRead++];
-				psCmdOpCode = (short*) (pchBuffer+iRead); iRead += 2;
-				iStatus = pchBuffer[iRead++];
-				puiBtClock = (unsigned int*)(pchBuffer+iRead); iRead +=4;
-				if ( *psCmdOpCode == (unsigned short)0xFCEE && iStatus == 0x00)
-				{
-					sprintf(g_szSysTime,"SYS_TIME=%ld.%09ld",tSysTimespec.tv_sec,tSysTimespec.tv_nsec);
-					sprintf(g_szRefTime,"BT_CLK=%d",*puiBtClock);
-					send_uevent_wh_ble_info(pEnv);
-				}
-			}
-		}
-		break;
-		default:
-		break;
-	}
+#define UARTDM_MR1_AUTO_RFR_LEVEL1_BMSK 0xffffff00
+#define UARTDM_MR1_AUTO_RFR_LEVEL0_BMSK 0x3f
+#define UARTDM_MR1_CTS_CTL_BMSK 0x40
+#define UARTDM_MR1_RX_RDY_CTL_BMSK 0x80
 
-	kfree(g_szSysTime);
-	kfree(g_szRefTime);
+#define UARTDM_MR2_ERROR_MODE_BMSK 0x40
+#define UARTDM_MR2_BITS_PER_CHAR_BMSK 0x30
 
-}
+/* bits per character configuration */
+#define FIVE_BPC  (0 << 4)
+#define SIX_BPC   (1 << 4)
+#define SEVEN_BPC (2 << 4)
+#define EIGHT_BPC (3 << 4)
 
-#endif
+#define UARTDM_MR2_STOP_BIT_LEN_BMSK 0xc
+#define STOP_BIT_ONE (1 << 2)
+#define STOP_BIT_TWO (3 << 2)
 
-/* If the debug_mask gets set to FATAL_LEV,
- * a fatal error has happened and further IPC logging
- * is disabled so that this problem can be detected
- */
-enum {
-	FATAL_LEV = 0U,
-	ERR_LEV = 1U,
-	WARN_LEV = 2U,
-	INFO_LEV = 3U,
-	DBG_LEV = 4U,
-};
+#define UARTDM_MR2_PARITY_MODE_BMSK 0x3
 
-/* Default IPC log level INFO */
-static int hs_serial_debug_mask = DBG_LEV;
-module_param_named(debug_mask, hs_serial_debug_mask,
-		   int, S_IRUGO | S_IWUSR | S_IWGRP);
+/* Parity configuration */
+#define NO_PARITY 0x0
+#define EVEN_PARITY 0x1
+#define ODD_PARITY 0x2
+#define SPACE_PARITY 0x3
 
-#define MSM_HS_DBG(x...) do { \
-	if (hs_serial_debug_mask >= DBG_LEV) { \
-		if (ipc_msm_hs_log_ctxt) \
-			ipc_log_string(ipc_msm_hs_log_ctxt, x); \
-	} \
-} while (0)
+#define UARTDM_IPR_STALE_TIMEOUT_MSB_BMSK 0xffffff80
+#define UARTDM_IPR_STALE_LSB_BMSK 0x1f
 
-#define MSM_HS_INFO(x...) do { \
-	if (hs_serial_debug_mask >= INFO_LEV) {\
-		if (ipc_msm_hs_log_ctxt) \
-			ipc_log_string(ipc_msm_hs_log_ctxt, x); \
-	} \
-} while (0)
+/* These can be used for both ISR and IMR register */
+#define UARTDM_ISR_TX_READY_BMSK        BIT(7)
+#define UARTDM_ISR_CURRENT_CTS_BMSK     BIT(6)
+#define UARTDM_ISR_DELTA_CTS_BMSK       BIT(5)
+#define UARTDM_ISR_RXLEV_BMSK           BIT(4)
+#define UARTDM_ISR_RXSTALE_BMSK         BIT(3)
+#define UARTDM_ISR_RXBREAK_BMSK         BIT(2)
+#define UARTDM_ISR_RXHUNT_BMSK          BIT(1)
+#define UARTDM_ISR_TXLEV_BMSK           BIT(0)
 
-/* warnings and errors show up on console always */
-#define MSM_HS_WARN(x...) do { \
-	pr_warn(x); \
-	if (ipc_msm_hs_log_ctxt && hs_serial_debug_mask >= WARN_LEV) \
-		ipc_log_string(ipc_msm_hs_log_ctxt, x); \
-} while (0)
+/* Field definitions for UART_DM_DMEN*/
+#define UARTDM_TX_DM_EN_BMSK 0x1
+#define UARTDM_RX_DM_EN_BMSK 0x2
 
-/* ERROR condition in the driver sets the hs_serial_debug_mask
- * to ERR_FATAL level, so that this message can be seen
- * in IPC logging. Further errors continue to log on the console
- */
-#define MSM_HS_ERR(x...) do { \
-	pr_err(x); \
-	if (ipc_msm_hs_log_ctxt && hs_serial_debug_mask >= ERR_LEV) { \
-		ipc_log_string(ipc_msm_hs_log_ctxt, x); \
-		hs_serial_debug_mask = FATAL_LEV; \
-	} \
-} while (0)
-/*
- * There are 3 different kind of UART Core available on MSM.
- * High Speed UART (i.e. Legacy HSUART), GSBI based HSUART
- * and BSLP based HSUART.
- */
-enum uart_core_type {
-	LEGACY_HSUART,
-	GSBI_HSUART,
-	BLSP_HSUART,
-};
+#define UART_FIFOSIZE 64
+#define UARTCLK 7372800
 
+/* Rx DMA request states */
 enum flush_reason {
 	FLUSH_NONE,
 	FLUSH_DATA_READY,

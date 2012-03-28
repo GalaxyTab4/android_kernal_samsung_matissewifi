@@ -36,6 +36,8 @@
 #include <linux/io.h>
 #include <linux/uaccess.h>
 
+#define OUR_NAME "alim7101_wdt"
+#define PFX OUR_NAME ": "
 
 #define WDT_ENABLE 0x9C
 #define WDT_DISABLE 0x8C

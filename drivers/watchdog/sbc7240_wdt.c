@@ -32,6 +32,7 @@
 #include <linux/io.h>
 #include <linux/uaccess.h>
 #include <linux/atomic.h>
+#define SBC7240_PREFIX "sbc7240_wdt: "
 
 #define SBC7240_ENABLE_PORT		0x443
 #define SBC7240_DISABLE_PORT		0x043
