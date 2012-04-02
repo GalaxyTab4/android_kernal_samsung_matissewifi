@@ -753,15 +753,15 @@ static noinline int slow_avc_audit(u32 ssid, u32 tsid, u16 tclass,
 	    (flags & MAY_NOT_BLOCK))
 		return -ECHILD;
 
-	a->selinux_audit_data->tclass = tclass;
-	a->selinux_audit_data->requested = requested;
-	a->selinux_audit_data->ssid = ssid;
-	a->selinux_audit_data->tsid = tsid;
-	a->selinux_audit_data->audited = audited;
-	a->selinux_audit_data->denied = denied;
-	a->lsm_pre_audit = avc_audit_pre_callback;
-	a->lsm_post_audit = avc_audit_post_callback;
-	common_lsm_audit(a);
+	slad.tclass = tclass;
+	slad.requested = requested;
+	slad.ssid = ssid;
+	slad.tsid = tsid;
+	slad.audited = audited;
+	slad.denied = denied;
+
+	a->selinux_audit_data->slad = &slad;
+	common_lsm_audit(a, avc_audit_pre_callback, avc_audit_post_callback);
 	return 0;
 }
 
