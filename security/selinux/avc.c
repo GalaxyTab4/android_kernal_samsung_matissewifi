@@ -722,11 +722,6 @@ static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
 {
 	struct common_audit_data *ad = a;
 	audit_log_format(ab, " ");
-<<<<<<< HEAD
-	avc_dump_query(ab, ad->selinux_audit_data.ssid,
-			   ad->selinux_audit_data.tsid,
-			   ad->selinux_audit_data.tclass);}
-=======
 	avc_dump_query(ab, ad->selinux_audit_data->ssid,
 			   ad->selinux_audit_data->tsid,
 			   ad->selinux_audit_data->tclass);
@@ -769,7 +764,6 @@ static noinline int slow_avc_audit(u32 ssid, u32 tsid, u16 tclass,
 	common_lsm_audit(a);
 	return 0;
 }
->>>>>>> 3b3b0e4... LSM: shrink sizeof LSM specific portion of common_audit_data
 
 /**
  * avc_audit - Audit the granting or denial of permissions.

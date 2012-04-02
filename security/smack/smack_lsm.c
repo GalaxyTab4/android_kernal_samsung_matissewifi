@@ -1944,13 +1944,12 @@ static int smack_netlabel_send(struct sock *sk, struct sockaddr_in *sap)
 	char *hostsp;
 	struct socket_smack *ssp = sk->sk_security;
 	struct smk_audit_info ad;
+	struct lsm_network_audit net;
 
 	rcu_read_lock();
 	hostsp = smack_host_label(sap);
 	if (hostsp != NULL) {
 #ifdef CONFIG_AUDIT
-		struct lsm_network_audit net;
-
 		smk_ad_init_net(&ad, __func__, LSM_AUDIT_DATA_NET, &net);
 		ad.a.u.net->family = sap->sin_family;
 		ad.a.u.net->dport = sap->sin_port;
@@ -2815,10 +2814,8 @@ static int smack_unix_stream_connect(struct sock *sock,
 	struct socket_smack *osp = other->sk_security;
 	struct socket_smack *nsp = newsk->sk_security;
 	struct smk_audit_info ad;
-	int rc = 0;
-
-#ifdef CONFIG_AUDIT
 	struct lsm_network_audit net;
+	int rc = 0;
 
 	smk_ad_init_net(&ad, __func__, LSM_AUDIT_DATA_NET, &net);
 	smk_ad_setfield_u_net_sk(&ad, other);
@@ -2851,10 +2848,8 @@ static int smack_unix_may_send(struct socket *sock, struct socket *other)
 	struct socket_smack *ssp = sock->sk->sk_security;
 	struct socket_smack *osp = other->sk->sk_security;
 	struct smk_audit_info ad;
-	int rc = 0;
-
-#ifdef CONFIG_AUDIT
 	struct lsm_network_audit net;
+	int rc = 0;
 
 	smk_ad_init_net(&ad, __func__, LSM_AUDIT_DATA_NET, &net);
 	smk_ad_setfield_u_net_sk(&ad, other->sk);
@@ -3005,9 +3000,7 @@ static int smack_socket_sock_rcv_skb(struct sock *sk, struct sk_buff *skb)
 	char *csp;
 	int rc;
 	struct smk_audit_info ad;
-#ifdef CONFIG_AUDIT
 	struct lsm_network_audit net;
-#endif
 	if (sk->sk_family != PF_INET && sk->sk_family != PF_INET6)
 		return 0;
 
@@ -3170,9 +3163,7 @@ static int smack_inet_conn_request(struct sock *sk, struct sk_buff *skb,
 	char *sp;
 	int rc;
 	struct smk_audit_info ad;
-#ifdef CONFIG_AUDIT
 	struct lsm_network_audit net;
-#endif
 
 	/* handle mapped IPv4 packets arriving via IPv6 sockets */
 	if (family == PF_INET6 && skb->protocol == htons(ETH_P_IP))
