@@ -18,7 +18,7 @@ struct sec_param_data {
 	unsigned int slideCount;
 #endif
 	unsigned int cp_debuglevel;
-#if defined(CONFIG_GSM_MODEM_SPRD6500) || defined(CONFIG_SGLTE_QSC_MODEM)
+#ifdef CONFIG_GSM_MODEM_SPRD6500
 	unsigned int update_cp_bin;
 #endif
 #ifdef CONFIG_RTC_AUTO_PWRON_PARAM
@@ -29,11 +29,7 @@ struct sec_param_data {
 #ifdef CONFIG_SEC_MONITOR_BATTERY_REMOVAL
 	unsigned int normal_poweroff;
 #endif
-	unsigned int enable_diag;
-#ifdef CONFIG_RESTART_REASON_SEC_PARAM
-	unsigned int param_restart_reason;
-#endif
-};
+} ;
 
 enum sec_param_index {
 	param_index_debuglevel,
@@ -45,7 +41,7 @@ enum sec_param_index {
 	param_slideCount,
 #endif
 	param_cp_debuglevel,
-#if defined(CONFIG_GSM_MODEM_SPRD6500) || defined(CONFIG_SGLTE_QSC_MODEM)
+#ifdef CONFIG_GSM_MODEM_SPRD6500
 	param_update_cp_bin,
 #endif
 #ifdef CONFIG_RTC_AUTO_PWRON_PARAM
@@ -56,11 +52,7 @@ enum sec_param_index {
 #ifdef CONFIG_SEC_MONITOR_BATTERY_REMOVAL
 	param_index_normal_poweroff,
 #endif
-	param_index_enable_diag,
-#ifdef CONFIG_RESTART_REASON_SEC_PARAM
-	param_index_restart_reason,
-#endif
-};
+} ;
 
 extern bool sec_open_param(void);
 extern bool sec_get_param(enum sec_param_index index, void *value);

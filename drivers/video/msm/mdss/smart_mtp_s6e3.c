@@ -98,7 +98,7 @@ static char VT_300CD_R;
 static char VT_300CD_G;
 static char VT_300CD_B;
 
-int get_lcd_ldi_info(void);
+int get_lcd_panel_res(void);
 
 static int char_to_int(char data1)
 {
@@ -1301,7 +1301,7 @@ static int generate_gray_scale(struct SMART_DIM *pSmart)
 			cal_cnt++;
 		 } else {
 			if (cnt == S6E3_ARRAY[10]) {
-				pr_debug("%s end\n", __func__);
+				pr_info("%s end\n", __func__);
 			} else {
 				pr_err("%s fail cnt:%d\n", __func__, cnt);
 				return -EINVAL;
@@ -1702,288 +1702,6 @@ static int rgb_offset_K_fhd_revE[][RGB_COMPENSATION] = {
 	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 
-static int gradation_offset_K_fhd_revG[][9] = {
-/*	V255 V203 V151 V87 V51 V35 V23 V11 V3 */
-	{0, 11, 21, 32, 43, 47, 49, 52, 54},
-	{0, 10, 18, 29, 38, 41, 42, 45, 47},
-	{0, 9, 17, 25, 34, 36, 37, 41, 43},
-	{0, 9, 15, 23, 29, 31, 33, 37, 39},
-	{0, 9, 14, 21, 26, 27, 28, 31, 34},
-	{0, 8, 14, 20, 24, 26, 28, 31, 33},
-	{0, 7, 11, 17, 21, 24, 25, 28, 30},
-/*	{0, 7, 11, 16, 19, 22, 23, 25, 32},*/
-	{0, 7, 11, 16, 19, 22, 23, 25, 29},
-	{0, 7, 11, 15, 19, 21, 22, 25, 27},
-	{0, 7, 10, 14, 18, 19, 20, 23, 26},
-	{0, 6, 10, 14, 17, 18, 20, 22, 25},
-	{0, 6, 9, 13, 16, 17, 19, 21, 24},
-	{0, 6, 9, 12, 15, 17, 18, 21, 23},
-	{0, 6, 9, 12, 14, 15, 17, 19, 22},
-	{0, 6, 9, 11, 13, 15, 17, 19, 21},
-	{0, 6, 8, 11, 13, 15, 16, 18, 21},
-	{0, 6, 8, 10, 12, 13, 15, 17, 19},
-	{0, 6, 8, 10, 12, 13, 15, 16, 19},
-	{0, 5, 8, 10, 12, 13, 15, 17, 19},
-	{0, 5, 7, 9, 11, 12, 14, 16, 18},
-	{0, 5, 7, 8, 10, 11, 13, 15, 17},
-	{0, 5, 7, 8, 10, 11, 12, 14, 16},
-	{0, 5, 7, 8, 10, 11, 12, 14, 16},
-	{0, 5, 7, 7, 9, 10, 11, 13, 15},
-	{0, 5, 7, 7, 9, 10, 11, 13, 15},
-	{0, 5, 6, 7, 8, 9, 10, 12, 15},
-	{0, 5, 6, 6, 8, 8, 9, 11, 13},
-	{0, 5, 6, 6, 7, 8, 8, 10, 13},
-	{0, 5, 6, 6, 7, 8, 8, 10, 12},
-	{0, 5, 6, 6, 6, 7, 8, 10, 12},
-	{0, 5, 6, 6, 6, 7, 8, 9, 12},
-	{0, 5, 6, 5, 6, 7, 7, 9, 11},
-	{0, 4, 5, 5, 6, 6, 7, 8, 10},
-	{0, 4, 5, 5, 6, 6, 7, 8, 10},
-	{0, 4, 5, 5, 6, 6, 6, 7, 9},
-	{0, 4, 5, 5, 5, 5, 6, 7, 6},
-	{0, 4, 4, 4, 5, 5, 5, 6, 5},
-	{0, 4, 4, 4, 5, 4, 4, 5, 5},
-	{0, 4, 4, 3, 4, 5, 4, 6, 5},
-	{0, 4, 4, 4, 4, 4, 4, 6, 8},
-	{0, 3, 5, 4, 4, 5, 4, 5, 5},
-	{0, 3, 4, 4, 4, 5, 4, 5, 3},
-	{0, 2, 4, 4, 3, 4, 3, 5, 4},
-	{0, 2, 4, 4, 3, 4, 3, 4, 6},
-	{0, 3, 4, 4, 3, 4, 4, 5, 4},
-	{0, 2, 4, 4, 4, 4, 4, 4, 6},
-	{0, 2, 4, 3, 3, 4, 4, 4, 6},
-	{0, 2, 4, 4, 3, 4, 3, 4, 5},
-	{0, 2, 4, 4, 3, 3, 4, 5, 2},
-	{0, 2, 4, 4, 3, 3, 3, 3, 2},
-	{0, 3, 3, 3, 2, 3, 2, 3, 0},
-	{0, 3, 4, 3, 3, 3, 2, 4, 1},
-	{0, 3, 4, 3, 2, 3, 3, 4, 0},
-	{0, 3, 3, 3, 2, 2, 2, 3, 2},
-	{0, 3, 3, 3, 1, 2, 2, 3, 0},
-	{0, 3, 3, 3, 1, 2, 1, 2, 0},
-	{0, 2, 2, 3, 1, 2, 1, 2, 0},
-	{0, 2, 2, 3, 1, 1, 1, 2, 1},
-	{0, 1, 1, 2, 1, 1, 1, 2, 0},
-	{0, 3, 2, 3, 1, 1, 1, 2, 2},
-	{0, 3, 3, 2, 1, 1, 1, 1, 2},
-	{1, 3, 3, 2, 1, 1, 0, 1, 3},
-	{2, 3, 1, 1, 1, 1, 1, 1, 1},
-	{1, 2, 1, 0, 0, 0, 0, 0, 2},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0},
-};
-static int rgb_offset_K_fhd_revG[][RGB_COMPENSATION] = {
-/*	R255 G255 B255 R203 G203 B203 R151 G151 B151
-	R87 G87 B87 R51 G51 B51 R35 G35 B35
-	R23 G23 B23 R11 G11 B11
-*/
-	{-5, 2, -7, -1, 2, -3, -4, 2, -4, -6, 4, -8, -7, 5, -11, -5, 2, -11, -3, 1, -3, -1, 0, -2},
-	{-2, 2, -4, -3, 1, -3, -4, 2, -5, -8, 2, -8, -6, 5, -11, -6, 3, -11, -2, 2, -3, -1, 1, -4},
-	{-3, 0, -4, -3, 1, -4, -3, 1, -5, -7, 2, -7, -7, 4, -10, -4, 3, -9, -4, 2, -6, -2, 2, -5},
-	{-2, 1, -3, -2, 0, -3, -3, 1, -4, -6, 2, -7, -6, 4, -9, -6, 3, -9, -4, 2, -7, -1, 2, -6},
-	{-2, 0, -3, -3, 0, -4, -3, 1, -4, -4, 2, -5, -6, 5, -8, -2, 4, -5, -4, 3, -6, -2, 3, -7},
-	{-2, 0, -2, -2, 0, -3, -3, 0, -4, -4, 2, -5, -5, 4, -8, -6, 3, -9, -4, 2, -6, -3, 3, -8},
-	{-1, 0, -2, -1, 0, -2, -2, 0, -4, -6, 2, -5, -6, 3, -8, -4, 3, -7, -4, 3, -6, -3, 3, -8},
-	{-1, 0, -1, -1, 0, -2, -2, 0, -4, -4, 2, -4, -6, 4, -8, -6, 3, -8, -2, 3, -5, -1, 5, -8},
-	{0, 0, -1, -2, 0, -3, -2, 0, -3, -4, 2, -5, -7, 3, -7, -4, 3, -7, -4, 3, -5, -3, 3, -11},
-	{0, 0, -1, -2, 0, -2, -2, 0, -3, -3, 2, -4, -5, 3, -5, -4, 4, -7, -4, 2, -5, -2, 4, -11},
-	{0, 0, -1, -1, 0, -2, -2, 0, -3, -3, 2, -4, -5, 3, -7, -4, 3, -7, -4, 2, -4, -1, 5, -12},
-	{0, 0, -1, -1, 0, -2, -3, 0, -3, -3, 1, -4, -5, 3, -6, -4, 3, -7, -5, 1, -5, -2, 5, -12},
-	{0, 0, -1, -1, 0, -2, -3, 0, -3, -3, 1, -4, -5, 3, -6, -3, 3, -7, -4, 3, -6, -2, 4, -11},
-	{0, 0, -1, -1, 0, -2, -3, 0, -3, -2, 1, -3, -4, 3, -5, -3, 3, -7, -3, 2, -3, -3, 5, -13},
-	{0, 0, -1, -1, 0, -2, -3, 0, -3, -2, 1, -2, -4, 3, -5, -3, 3, -6, -4, 1, -5, -4, 5, -13},
-	{0, 0, -1, -1, 0, -2, -2, 0, -2, -2, 1, -4, -5, 3, -5, -3, 3, -5, -5, 2, -7, -2, 6, -11},
-	{0, 0, -1, -1, 0, -2, -1, 0, -2, -3, 1, -3, -5, 2, -5, -3, 3, -6, -3, 3, -5, -3, 5, -12},
-	{0, 0, -1, -2, 0, -2, -1, 0, -2, -2, 1, -2, -4, 2, -5, -3, 3, -6, -4, 2, -6, -2, 6, -13},
-	{0, 0, -1, -1, 0, -1, -3, 0, -3, -2, 0, -3, -5, 2, -5, -4, 2, -7, -5, 2, -7, -2, 5, -11},
-	{0, 0, -1, -1, 0, -1, -3, 0, -3, -1, 1, -2, -4, 2, -4, -4, 2, -6, -5, 2, -6, -4, 4, -13},
-	{0, 0, 0, -1, 0, -2, -2, 0, -2, -2, 1, -2, -4, 2, -5, -4, 2, -6, -3, 2, -5, -5, 3, -14},
-	{0, 0, 0, -1, 0, -2, -2, 0, -2, -2, 1, -2, -3, 2, -4, -4, 2, -6, -4, 2, -7, -1, 5, -10},
-	{0, 0, 0, -1, 0, -2, -2, 0, -2, -2, 0, -2, -4, 2, -4, -3, 2, -6, -3, 2, -6, -4, 3, -13},
-	{0, 0, 0, -1, 0, -2, -2, 0, -2, -1, 0, -1, -4, 2, -4, -1, 2, -5, -3, 2, -6, -4, 4, -12},
-	{0, 0, 0, -1, 0, -2, -2, 0, -2, -1, 0, -1, -4, 1, -4, -2, 2, -6, -3, 2, -5, -3, 4, -12},
-	{0, 0, 0, -2, 0, -2, -1, 0, -2, -1, 0, -1, -2, 1, -3, -4, 2, -6, -3, 2, -5, -2, 4, -12},
-	{0, 0, 0, -1, 0, -2, -2, 0, -2, 0, 0, 0, -3, 2, -3, -3, 2, -6, -4, 2, -7, 1, 4, -9},
-	{0, 0, 0, -1, 0, -2, -2, 0, -2, 0, 0, 0, -3, 1, -4, -2, 2, -5, -3, 2, -5, 0, 4, -11},
-	{0, 0, 0, -1, 0, -2, -1, 0, -1, -1, 0, -1, -3, 1, -3, -2, 2, -5, -2, 2, -5, -1, 3, -11},
-	{0, 0, 0, -1, 0, -2, -2, 0, -1, 0, 0, 0, -2, 1, -3, -2, 2, -6, -1, 2, -4, -1, 3, -9},
-	{0, 0, 0, -1, 0, -2, -1, 0, -1, -1, 0, -1, -2, 0, -2, -2, 2, -6, -2, 1, -5, -1, 5, -12},
-	{0, 0, 0, -2, 0, -2, -1, 0, -1, -1, 0, -1, -2, 0, -3, -2, 2, -5, -1, 2, -4, 0, 4, -10},
-	{0, 0, 0, -1, 0, -1, -2, 0, -2, -1, 0, -1, -2, 0, -2, -1, 2, -5, -1, 2, -3, 1, 5, -9},
-	{0, 0, 0, -1, 0, -1, -1, 0, -2, -2, 0, -1, -2, 0, -2, -2, 1, -5, -2, 1, -5, 2, 5, -9},
-	{0, 0, 0, -1, 0, -1, -1, 0, -1, -1, 0, -1, -2, 0, -2, -2, 1, -5, 0, 2, -3, 0, 4, -11},
-	{0, 0, 0, -1, 0, -1, -1, 0, -2, -1, 0, 0, -3, 0, -2, -1, 2, -5, 0, 1, -4, 0, 4, -9},
-	{0, 0, 0, -1, 0, -1, -1, 0, -2, 0, 0, 1, -2, 0, -2, -1, 2, -5, 0, 1, -4, 2, 5, -7},
-	{0, 0, 0, -1, 0, -1, -1, 0, -2, 0, 0, 1, -2, 0, -2, 0, 2, -5, 1, 1, -2, 2, 4, -9},
-	{0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, -2, 0, -2, -1, 2, -5, 0, 1, -3, 0, 3, -9},
-	{0, 0, 0, 0, 0, -1, 0, 0, 0, -1, 0, 0, -1, 1, -1, -1, 2, -5, 1, 1, -3, 0, 3, -9},
-	{0, 0, 0, 0, 0, 0, -1, 0, -1, 0, 0, 1, -1, 0, -1, -1, 1, -4, -1, 1, -3, 0, 3, -9},
-	{0, 0, -1, -1, 0, -1, 0, 0, 0, 1, 0, 1, -2, 0, -1, -1, 1, -4, 1, 1, -3, 0, 3, -9},
-	{0, 0, -1, 0, 0, 0, 0, 0, -1, 0, 0, 1, -2, 0, -1, -1, 1, -4, 1, 1, -3, 1, 3, -8},
-	{0, 0, 0, 1, 0, 0, -1, 0, -1, 0, 0, 0, -1, 0, 0, -1, 1, -4, 1, 1, -3, 1, 4, -9},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 1, -3, -1, 0, -4, 1, 3, -8},
-	{0, 0, 0, 0, 0, 0, -1, 0, -1, 0, 0, 1, -1, 0, -1, -2, 1, -4, -1, 0, -4, 0, 3, -9},
-	{1, 0, 1, -1, 0, -2, 0, 0, 0, 0, 0, 1, 0, 0, 0, -1, 1, -4, -1, 0, -4, -1, 3, -9},
-	{0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 1, -1, 0, -1, -2, 0, -3, -1, 1, -4, 1, 3, -7},
-	{0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, -1, 0, 0, -1, 0, -3, -2, 0, -3, -1, 2, -9},
-	{0, 0, 0, 0, 0, 0, -1, 0, -1, -2, 0, 0, 0, 0, 0, -1, 0, -2, 0, 1, -3, 2, 4, -6},
-	{0, 0, 0, 0, 0, 0, 1, 0, -1, 0, 0, 1, -1, 0, 0, 0, 1, -2, 0, 1, -3, 1, 3, -6},
-	{0, 0, 0, 1, 0, -1, -1, 0, -1, -1, 0, 0, 0, 0, 1, 0, 1, -2, -1, 0, -4, 0, 2, -6},
-	{0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 1, -3, 0, -3, 0, 0, -3, 2, 3, -5},
-	{0, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 1, -1, 0, -3, 0, 1, -2, 1, 2, -6},
-	{0, 0, 0, 0, 0, 0, 0, 0, -1, 1, 0, 0, 0, 0, 1, -1, 0, -1, 0, 0, -3, 1, 2, -5},
-	{0, 0, 0, 0, 0, -1, 0, 0, 0, 1, 0, 0, 0, 0, 1, -1, 0, -1, 2, 1, -2, 3, 2, -4},
-	{0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 1, -1, 0, 0, -1, 0, -1, 2, 1, -2, 3, 1, -4},
-	{0, 0, 0, -1, 0, -1, 1, 0, 0, 0, 0, 0, 0, 0, 1, -1, 0, -2, 1, 0, -3, 1, 1, -4},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-};
-
-static int gradation_offset_K_fhd_revI[][9] = {
-/*	V255 V203 V151 V87 V51 V35 V23 V11 V3 */
-	{0, 12, 23, 32, 42, 46, 47, 50, 50}, 
-	{0, 9, 19, 27, 36, 37, 38, 42, 46}, 
-	{0, 8, 17, 24, 30, 32, 34, 37, 39}, 
-	{0, 8, 15, 22, 29, 31, 33, 36, 39}, 
-	{0, 7, 14, 20, 25, 27, 29, 31, 33}, 
-	{0, 7, 12, 18, 23, 25, 27, 29, 32}, 
-	{0, 7, 12, 16, 20, 23, 25, 27, 30}, 
-	{0, 7, 11, 15, 19, 22, 24, 26, 27}, 
-	{0, 6, 11, 15, 18, 21, 23, 25, 26}, 
-	{0, 6, 10, 12, 17, 19, 21, 23, 24}, 
-	{0, 6, 10, 12, 16, 18, 20, 22, 26}, 
-	{0, 5, 9, 11, 15, 17, 19, 21, 22}, 
-	{0, 5, 8, 10, 14, 16, 18, 20, 21}, 
-	{0, 5, 8, 10, 14, 14, 16, 18, 21}, 
-	{0, 5, 8, 10, 13, 14, 16, 17, 19}, 
-	{0, 4, 7, 9, 12, 13, 15, 16, 19}, 
-	{0, 4, 7, 8, 11, 12, 14, 16, 19}, 
-	{0, 4, 6, 7, 10, 11, 13, 15, 17}, 
-	{0, 4, 7, 7, 10, 11, 13, 14, 17}, 
-	{0, 4, 7, 7, 10, 11, 13, 14, 16}, 
-	{0, 4, 7, 7, 10, 10, 12, 14, 17}, 
-	{0, 4, 6, 6, 9, 10, 12, 14, 16}, 
-	{0, 4, 6, 6, 9, 10, 11, 13, 14}, 
-	{0, 4, 6, 6, 8, 9, 10, 12, 13}, 
-	{0, 4, 6, 6, 8, 9, 10, 12, 12}, 
-	{0, 4, 6, 6, 7, 8, 9, 11, 13}, 
-	{0, 4, 5, 5, 7, 7, 8, 10, 11}, 
-	{0, 3, 5, 5, 6, 7, 8, 9, 11}, 
-	{0, 3, 5, 4, 6, 6, 8, 9, 12}, 
-	{0, 3, 5, 4, 6, 6, 8, 9, 11}, 
-	{0, 3, 5, 5, 6, 6, 7, 8, 9}, 
-	{0, 3, 5, 3, 5, 6, 7, 9, 8}, 
-	{0, 3, 5, 3, 5, 5, 6, 8, 10}, 
-	{0, 3, 5, 4, 4, 5, 6, 7, 10}, 
-	{0, 3, 5, 3, 5, 5, 6, 8, 8}, 
-	{0, 3, 5, 3, 4, 5, 5, 6, 9}, 
-	{0, 3, 4, 4, 4, 5, 5, 7, 7}, 
-	{0, 3, 5, 4, 4, 4, 5, 7, 7}, 
-	{0, 3, 3, 4, 4, 5, 5, 7, 7}, 
-	{0, 2, 5, 4, 4, 4, 4, 6, 7}, 
-	{0, 3, 5, 5, 4, 5, 5, 7, 10}, 
-	{0, 3, 5, 4, 4, 5, 4, 6, 5}, 
-	{0, 2, 5, 3, 4, 4, 4, 6, 3}, 
-	{0, 2, 6, 5, 5, 5, 5, 7, 6}, 
-	{0, 2, 4, 4, 4, 4, 4, 6, 5}, 
-	{0, 3, 6, 5, 4, 3, 4, 5, 3}, 
-	{0, 3, 5, 4, 4, 5, 4, 5, 5}, 
-	{0, 2, 5, 5, 4, 4, 4, 5, 4}, 
-	{0, 2, 5, 4, 4, 4, 3, 5, 2}, 
-	{0, 2, 4, 4, 4, 3, 4, 5, 3}, 
-	{0, 2, 5, 5, 4, 4, 3, 5, 2}, 
-	{0, 3, 5, 3, 3, 3, 3, 3, 2}, 
-	{0, 3, 5, 3, 2, 2, 2, 3, 0}, 
-	{0, 1, 4, 4, 3, 3, 2, 3, 4}, 
-	{0, 1, 4, 3, 2, 2, 2, 3, 0}, 
-	{0, 1, 3, 3, 2, 2, 1, 3, 0}, 
-	{0, 1, 2, 2, 1, 2, 1, 2, 0}, 
-	{0, 1, 2, 1, 1, 1, 1, 2, 0}, 
-	{3, 3, 4, 3, 2, 1, 1, 2, 0}, 
-	{1, 2, 3, 1, 1, 1, 1, 2, 0}, 
-	{1, 1, 2, 1, 1, 1, 1, 1, 0}, 
-	{0, 1, 2, 0, 0, 0, 0, 1, 0}, 
-	{2, 2, 2, 2, 1, 1, 1, 1, 1}, 
-	{1, 1, 1, 1, 0, 0, 0, 0, 0}, 
-	{0, 0, 0, 0, 0, 0, 0, 0, 0}, 
-};
-
-static int rgb_offset_K_fhd_revI[][RGB_COMPENSATION] = {
-/*	R255 G255 B255 R203 G203 B203 R151 G151 B151
-	R87 G87 B87 R51 G51 B51 R35 G35 B35
-	R23 G23 B23 R11 G11 B11
-*/
-	{-6, 0, -8, -5, 0, -5, -6, 0, -7, -11, 1, -9, -10, 2, -15, -5, 1, -10, -5, 0, -6, -3, 1, -5}, 
-	{-3, 0, -4, -3, 0, -4, -5, 0, -7, -10, 1, -9, -11, 2, -12, -6, 2, -10, -5, 0, -7, -5, 0, -6}, 
-	{-2, 0, -3, -3, 0, -4, -5, 0, -5, -9, 0, -9, -10, 2, -10, -7, 1, -10, -6, 1, -8, -4, 2, -6}, 
-	{-1, 0, -2, -3, 0, -3, -5, 0, -5, -9, 0, -9, -10, 0, -11, -9, 0, -9, -6, 0, -11, -6, 1, -9}, 
-	{-1, 0, -1, -2, 0, -3, -5, 0, -5, -7, 0, -7, -9, 1, -9, -9, 0, -10, -5, 1, -8, -5, 3, -9}, 
-	{0, 0, -1, -3, 0, -2, -3, 0, -4, -7, 0, -7, -9, 0, -9, -9, 1, -10, -7, 1, -9, -4, 3, -9}, 
-	{0, 0, 0, -2, 0, -3, -4, 0, -3, -6, 0, -7, -8, 0, -9, -8, 0, -10, -7, 1, -7, -5, 3, -13}, 
-	{0, 0, 0, -3, 0, -2, -3, 0, -4, -5, 0, -6, -8, 0, -8, -8, 0, -9, -8, 0, -8, -5, 3, -12}, 
-	{0, 0, 0, -2, 0, -2, -4, 0, -4, -5, 0, -6, -8, 0, -8, -8, 0, -9, -7, 0, -7, -5, 3, -13}, 
-	{0, 0, 0, -2, 0, -2, -2, 0, -3, -4, 0, -4, -8, 0, -8, -8, 0, -8, -7, 0, -7, -5, 3, -15}, 
-	{1, 0, 1, -2, 0, -2, -3, 0, -3, -3, 0, -4, -8, 0, -8, -8, 0, -8, -7, 0, -7, -6, 2, -17}, 
-	{1, 0, 1, -2, 0, -2, -2, 0, -2, -4, 0, -3, -7, 0, -8, -9, 0, -9, -7, 0, -7, -4, 3, -15}, 
-	{1, 0, 1, -2, 0, -2, -2, 0, -2, -2, 0, -3, -7, 0, -7, -9, 0, -9, -7, 0, -7, -5, 3, -15}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -2, -3, 0, -3, -6, 0, -7, -7, 1, -7, -7, 0, -9, -5, 4, -14}, 
-	{1, 0, 1, -2, 0, -1, -1, 0, -2, -3, 0, -3, -7, 0, -7, -7, 1, -7, -5, 1, -6, -5, 4, -16}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -3, -2, 0, -2, -6, 0, -7, -7, 1, -7, -7, 1, -7, -5, 4, -16}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -3, -1, 0, 0, -6, 0, -7, -7, 0, -7, -7, 0, -9, -6, 3, -15}, 
-	{0, 0, 0, 0, 0, -1, -2, 0, -2, -2, 0, -2, -6, 0, -5, -7,  0, -8, -4, 1, -6, -7, 3, -18}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -2, -1, 0, -2, -5, 0, -5, -6, 1, -6, -5, 1, -7, -5, 4, -16}, 
-	{1, 0, 1, -1, 0, -1, -1, 0, -2, -1, 0, -1, -6, 0, -6, -6, 0, -6, -5, 1, -7, -5, 4, -16}, 
-	{1, 0, 1, -1, 0, -1, -1, 0, -2, -1, 0, -1, -5, 0, -5, -7, 0, -7, -6, 0, -8, -6, 3, -17}, 
-	{1, 0, 1, -1, 0, -1, -1, 0, -2, -1, 0, -1, -5, 0, -6, -6, 0, -6, -6, 0, -8, -8, 2, -19}, 
-	{1, 0, 1, 0, 0, -1, -2, 0, -2, -1, 0, -1, -4, 0, -5, -6, 0, -6, -5, 0, -8, -7, 2, -17}, 
-	{1, 0, 1, -1, 0, -1, -1, 0, -2, -1, 0, 0, -5, 0, -6, -5, 0, -6, -4, 0, -7, -5, 3, -15}, 
-	{1, 0, 1, -1, 0, -1, -1, 0, -2, -1, 0, 0, -4, 0, -5, -5, 0, -6, -5, 0, -7, -6, 2, -17}, 
-	{1, 0, 1, -1, 0, -1, -1, 0, -2, 0, 0, 0, -4, 0, -4, -5, 0, -7, -4, 0, -6, -4, 3, -17}, 
-	{1, 0, 1, -1, 0, -1, -1, 0, -2, 0, 0, 1, -4, 0, -3, -4, 0, -6, -4, 0, -7, -3, 4, -16}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -2, 0, 0, 1, -3, 0, -3, -4, 0, -5, -3, 0, -6, -4, 5, -16}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -1, 1, 0, 1, -3, 0, -4, -4, 0, -7, -4, 0, -6, -4, 4, -17}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -2, 1, 0, 2, -3, 0, -4, -4, 0, -7, -3, 0, -5, -4, 4, -16}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -1, 1, 0, 1, -3, 0, -3, -3, 1, -5, -3, 0, -6, -2, 4, -15}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -1, 2, 0, 1, -4, 0, -4, -3, 0, -6, -3, 0, -5, -6, 2, -16}, 
-	{1, 0, 1, -1, 0, -1, -1, 0, -1, 1, 0, 1, -3, 0, -3, -3, 0, -6, -2, 0, -6, -5, 2, -17}, 
-	{1, 0, 1, -1, 0, -1, -1, 0, -1, 1, 0, 1, -3, 0, -2, -2, 0, -6, -1, 0, -5, -4, 3, -17}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -2, 2, 0, 2, -3, 0, -3, -2, 0, -6, -2, 0, -5, -4, 2, -15}, 
-	{1, 0, 1, -1, 0, -1, -2, 0, -2, 2, 0, 2, -2, 0, -2, -2, 0, -6, -1, 0, -5, -1, 4, -15}, 
-	{0, 0, 0, 0, 0, 0, -1, 0, -1, 0, 0, 0, -2, 0, -1, -1, 0, -6, -1, 0, -4, -3, 3, -15}, 
-	{1, 0, 1, -1, 0, 0, -2, 0, -2, 2, 0, 1, -2, 0, -1, -2, 0, -6, -1, 0, -4, -4, 2, -15}, 
-	{0, 0, 0, 0, 0, 0, -1, 0, -2, 0, 0, 1, -1, 0, -1, -3, 0, -6, -2, 0, -4, -4, 2, -16}, 
-	{0, 0, 0, 0, 0, 0, -1, 0, -1, 1, 0, 0, -2, 0, -1, -2, 0, -5, -1, 0, -4, -5, 2, -15}, 
-	{0, 0, 0, 0, 0, 0, -2, 0, -2, 0, 0, 0, 0, 0, -1, -3, 0, -5, -2, 0, -5, -4, 2, -13}, 
-	{1, 0, 1, 0, 0, 0, -1, 0, -2, 0, 0, 1, -2, 0, -1, -2, 0, -3, -2, 0, -6, -2, 3, -12}, 
-	{1, 0, 1, 0, 0, 0, -1, 0, -1, 0, 0, 0, -1, 0, -1, -2, 0, -4, -1, 1, -4, -2, 3, -10}, 
-	{0, 0, 1, -1, 0, -1, -2, 0, -2, 0, 0, 1, 0, 0, -1, -3, 0, -4, -2, 0, -5, -3, 2, -12}, 
-	{1, 0, 1, 0, 0, 0, -2, 0, -2, 1, 0, 1, 0, 0, -1, -3, 0, -4, -2, 0, -4, -4, 1, -12}, 
-	{1, 0, 1, -1, 0, 0, -1, 0, -1, 0, 0, 0, 0, 0, 1, -2, 0, -3, 0, 1, -3, -3, 2, -10}, 
-	{1, 0, 2, 0, 0, -1, -1, 0, -1, 0, 0, 0, 0, 0, -1, -3, 0, -2, -1, 0, -5, -1, 3, -10}, 
-	{0, 0, 0, 0, 0, 0, -1, 0, -1, -1, 0, 0, 1, 0, 0, -1, 0, -1, -1, 0, -4, -3, 2, -11}, 
-	{0, 0, 1, 0, 0, 0, -1, 0, -2, -1, 0, 0, 0, 0, -1, -3, 0, -2, -1, 0, -5, -2, 2, -9}, 
-	{0, 0, 0, 0, 0, 0, -1, 0, -1, 0, 0, 0, 1, 0, 0, -2, 0, -2, -2, 0, -4, -3, 1, -10}, 
-	{-1, 0, 1, 1, 0, 0, -2, 0, -1, -1, 0, -1, 0, 0, 0, -2, 0, -1, -2, 0, -5, -3, 1, -9}, 
-	{-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, -2, 0, -2, -1, 0, -4, 0, 3, -8}, 
-	{-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, -2, 0, -2, 0, 0, -4, 0, 2, -8}, 
-	{0, 0, 0, 1, 0, 0, -1, 0, -1, 0, 0, 1, 1, 0, 1, -1, 0, -1, 0, 0, -4, -2, 1, -10}, 
-	{-1, 0, 0, 1, 0, 1, 0, 0, -2, 0, 0, 1, 1, 0, 1, -2, 0, -1, 0, 0, -4, -2, 0, -9}, 
-	{-1, 0, 0, 1, 0, 0, -1, 0, -1, -1, 0, 0, 1, 0, 1, -2, 0, -1, 1, 0, -4, -2, 0, -7}, 
-	{-1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, -2, 0, -3, 2, 0, -3, -1, 0, -7}, 
-	{-1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, -1, 0, -1, 0, 0, -4, 0, 0, -6}, 
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 
-	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 
-};
-
 static void gamma_init_K_fhd_revE(struct SMART_DIM *pSmart, char *str, int size)
 {
 	long long candela_level[S6E3_TABLE_MAX] = {-1, };
@@ -1999,7 +1717,7 @@ static void gamma_init_K_fhd_revE(struct SMART_DIM *pSmart, char *str, int size)
 	int cnt;
 	int table_index;
 
-	pr_debug("%s : start !!\n",__func__);
+	pr_info("%s : start !!\n",__func__);
 	/*calculate candela level */
 	if (pSmart->brightness_level > 249) {
 		/* 249CD ~ 350CD */
@@ -2141,346 +1859,6 @@ static void gamma_init_K_fhd_revE(struct SMART_DIM *pSmart, char *str, int size)
 	mtp_offset_substraction(pSmart, str);
 }
 
-static void gamma_init_K_fhd_revG(struct SMART_DIM *pSmart, char *str, int size)
-{
-	long long candela_level[S6E3_TABLE_MAX] = {-1, };
-	int bl_index[S6E3_TABLE_MAX] = {-1, };
-
-	long long temp_cal_data = 0;
-	int bl_level;
-
-	int level_255_temp_MSB = 0;
-	int level_V255 = 0;
-
-	int point_index;
-	int cnt;
-	int table_index;
-
-	pr_info("%s : start !!\n",__func__);
-	/*calculate candela level */
-	if (pSmart->brightness_level > 282) {
-		/* 265CD ~ 350CD */
-		bl_level = pSmart->brightness_level;
-
-	}else if ((pSmart->brightness_level <= 282) &&
-					(pSmart->brightness_level >= 265)) {
-
-		if (pSmart->brightness_level == 282)
-			bl_level = 286;
-		else if (pSmart->brightness_level == 265)
-			bl_level = 270;
-		else
-			bl_level = 286;
-
-	}else if ((pSmart->brightness_level <= 249) &&
-				(pSmart->brightness_level > 162)) {
-		/* 172CD ~ 249CD */
-		bl_level = 256;	
-	} else if ((pSmart->brightness_level <= 162) &&
-				(pSmart->brightness_level >= 72)) {
-				
-		/* 72CD ~ 162CD */
-		if (pSmart->brightness_level == 72)
-				bl_level = 117;
-		else if (pSmart->brightness_level == 77)
-			bl_level = 125;
-		else if (pSmart->brightness_level == 82)
-			bl_level = 132;
-		else if (pSmart->brightness_level == 87)
-			bl_level = 140;
-		else if (pSmart->brightness_level == 93)
-			bl_level = 150;
-		else if (pSmart->brightness_level == 98)
-			bl_level = 155;
-		else if (pSmart->brightness_level == 105)
-			bl_level = 166;
-		else if (pSmart->brightness_level == 111)
-			bl_level = 174;
-		else if (pSmart->brightness_level == 119)
-			bl_level = 186;
-		else if (pSmart->brightness_level == 126)
-			bl_level = 196;
-		else if (pSmart->brightness_level == 134)
-			bl_level = 207;
-		else if (pSmart->brightness_level == 143)
-			bl_level = 220;
-		else if (pSmart->brightness_level == 152)
-			bl_level = 231;
-		else if (pSmart->brightness_level == 162)
-			bl_level = 244;		
-		else
-			bl_level = 244;		
-		
-	} else {
-		/* 60CD ~ 2CD */
-		bl_level = 111;
-	}	
-
-	if (pSmart->brightness_level < 350) {
-		for (cnt = 0; cnt < S6E3_TABLE_MAX; cnt++) {
-			point_index = S6E3_ARRAY[cnt+1];
-			temp_cal_data =
-			((long long)(candela_coeff_2p15[point_index])) *
-			((long long)(bl_level));
-			candela_level[cnt] = temp_cal_data;
-		}
-	} else {
-		for (cnt = 0; cnt < S6E3_TABLE_MAX; cnt++) {
-			point_index = S6E3_ARRAY[cnt+1];
-			temp_cal_data =
-			((long long)(candela_coeff_2p2[point_index])) *
-			((long long)(bl_level));
-			candela_level[cnt] = temp_cal_data;
-		}
-	}
-
-#ifdef SMART_DIMMING_DEBUG
-	printk(KERN_INFO "\n candela_1:%llu  candela_3:%llu  candela_11:%llu ",
-		candela_level[0], candela_level[1], candela_level[2]);
-	printk(KERN_INFO "candela_23:%llu  candela_35:%llu  candela_51:%llu ",
-		candela_level[3], candela_level[4], candela_level[5]);
-	printk(KERN_INFO "candela_87:%llu  candela_151:%llu  candela_203:%llu ",
-		candela_level[6], candela_level[7], candela_level[8]);
-	printk(KERN_INFO "candela_255:%llu brightness_level %d\n", candela_level[9], pSmart->brightness_level);
-#endif
-
-	for (cnt = 0; cnt < S6E3_TABLE_MAX; cnt++) {
-		if (searching_function(candela_level[cnt],
-			&(bl_index[cnt]), GAMMA_CURVE_2P2)) {
-			pr_info("%s searching functioin error cnt:%d\n",
-			__func__, cnt);
-		}
-	}
-
-	/*
-	*	Candela compensation
-	*/
-	for (cnt = 1; cnt < S6E3_TABLE_MAX; cnt++) {
-		table_index = find_cadela_table(pSmart->brightness_level);
-
-		if (table_index == -1) {
-			table_index = CCG6_MAX_TABLE;
-			pr_info("%s fail candela table_index cnt : %d brightness %d",
-				__func__, cnt, pSmart->brightness_level);
-		}
-
-		bl_index[S6E3_TABLE_MAX - cnt] +=
-			gradation_offset_K_fhd_revG[table_index][cnt - 1];
-
-		/* THERE IS M-GRAY0 target */
-		if (bl_index[S6E3_TABLE_MAX - cnt] == 0)
-			bl_index[S6E3_TABLE_MAX - cnt] = 1;
-	}
-
-#ifdef SMART_DIMMING_DEBUG
-	printk(KERN_INFO "\n bl_index_1:%d  bl_index_3:%d  bl_index_11:%d",
-		bl_index[0], bl_index[1], bl_index[2]);
-	printk(KERN_INFO "bl_index_23:%d bl_index_35:%d  bl_index_51:%d",
-		bl_index[3], bl_index[4], bl_index[5]);
-	printk(KERN_INFO "bl_index_87:%d  bl_index_151:%d bl_index_203:%d",
-		bl_index[6], bl_index[7], bl_index[8]);
-	printk(KERN_INFO "bl_index_255:%d\n", bl_index[9]);
-#endif
-	/*Generate Gamma table*/
-	for (cnt = 0; cnt < S6E3_TABLE_MAX; cnt++)
-		(void)Make_hexa[cnt](bl_index , pSmart, str);
-
-	/*
-	*	RGB compensation
-	*/
-	for (cnt = 0; cnt < RGB_COMPENSATION; cnt++) {
-		table_index = find_cadela_table(pSmart->brightness_level);
-
-		if (table_index == -1) {
-			table_index = CCG6_MAX_TABLE;
-			pr_info("%s fail RGB table_index cnt : %d brightness %d",
-				__func__, cnt, pSmart->brightness_level);
-		}
-
-		if (cnt < 3) {
-			level_V255 = str[cnt * 2] << 8 | str[(cnt * 2) + 1];
-			level_V255 +=
-				rgb_offset_K_fhd_revG[table_index][cnt];
-			level_255_temp_MSB = level_V255 / 256;
-
-			str[cnt * 2] = level_255_temp_MSB & 0xff;
-			str[(cnt * 2) + 1] = level_V255 & 0xff;
-		} else {
-			str[cnt+3] += rgb_offset_K_fhd_revG[table_index][cnt];
-		}
-	}
-	/*subtration MTP_OFFSET value from generated gamma table*/
-	mtp_offset_substraction(pSmart, str);
-}
-
-static void gamma_init_K_fhd_revI(struct SMART_DIM *pSmart, char *str, int size)
-{
-	long long candela_level[S6E3_TABLE_MAX] = {-1, };
-	int bl_index[S6E3_TABLE_MAX] = {-1, };
-
-	long long temp_cal_data = 0;
-	int bl_level;
-
-	int level_255_temp_MSB = 0;
-	int level_V255 = 0;
-
-	int point_index;
-	int cnt;
-	int table_index;
-
-	pr_info("%s : start !!\n",__func__);
-	/*calculate candela level */
-	if (pSmart->brightness_level > 234) {
-		/* 249CD ~ 350CD */
-		bl_level = pSmart->brightness_level;
-
-	}else if ((pSmart->brightness_level <= 234) &&
-					(pSmart->brightness_level >= 183))
-		bl_level = 249;
-	else if ((pSmart->brightness_level <= 172) &&
-				(pSmart->brightness_level >= 162)) {
-		/* 162CD ~ 172CD */
-		bl_level = 245;	
-	} else if ((pSmart->brightness_level <= 152) &&
-				(pSmart->brightness_level >= 64)) {
-				
-		/* 64CD ~ 152CD */
-		if (pSmart->brightness_level == 64)
-				bl_level = 115;
-		else if (pSmart->brightness_level == 68)
-			bl_level = 121;
-		else if (pSmart->brightness_level == 72)
-			bl_level = 128;
-		else if (pSmart->brightness_level == 77)
-			bl_level = 136;		
-		else if (pSmart->brightness_level == 82)
-			bl_level = 143;
-		else if (pSmart->brightness_level == 87)
-			bl_level = 151;
-		else if (pSmart->brightness_level == 93)
-			bl_level = 161;
-		else if (pSmart->brightness_level == 98)
-			bl_level = 169;
-		else if (pSmart->brightness_level == 105)
-			bl_level = 180;
-		else if (pSmart->brightness_level == 111)
-			bl_level = 189;
-		else if (pSmart->brightness_level == 119)
-			bl_level = 200;
-		else if (pSmart->brightness_level == 126)
-			bl_level = 213;
-		else if (pSmart->brightness_level == 134)
-			bl_level = 224;
-		else if (pSmart->brightness_level == 143)
-			bl_level = 236;
-		else if (pSmart->brightness_level == 152)
-			bl_level = 249;		
-		else
-			bl_level = 249;		
-		
-	} else {
-		/* 60CD ~ 2CD */
-		bl_level = AOR_DIM_BASE_CD;
-	}	
-
-	if (pSmart->brightness_level < 350) {
-		for (cnt = 0; cnt < S6E3_TABLE_MAX; cnt++) {
-			point_index = S6E3_ARRAY[cnt+1];
-			temp_cal_data =
-			((long long)(candela_coeff_2p15[point_index])) *
-			((long long)(bl_level));
-			candela_level[cnt] = temp_cal_data;
-		}
-	} else {
-		for (cnt = 0; cnt < S6E3_TABLE_MAX; cnt++) {
-			point_index = S6E3_ARRAY[cnt+1];
-			temp_cal_data =
-			((long long)(candela_coeff_2p2[point_index])) *
-			((long long)(bl_level));
-			candela_level[cnt] = temp_cal_data;
-		}
-	}
-
-#ifdef SMART_DIMMING_DEBUG
-	printk(KERN_INFO "\n candela_1:%llu  candela_3:%llu  candela_11:%llu ",
-		candela_level[0], candela_level[1], candela_level[2]);
-	printk(KERN_INFO "candela_23:%llu  candela_35:%llu  candela_51:%llu ",
-		candela_level[3], candela_level[4], candela_level[5]);
-	printk(KERN_INFO "candela_87:%llu  candela_151:%llu  candela_203:%llu ",
-		candela_level[6], candela_level[7], candela_level[8]);
-	printk(KERN_INFO "candela_255:%llu brightness_level %d\n", candela_level[9], pSmart->brightness_level);
-#endif
-
-	for (cnt = 0; cnt < S6E3_TABLE_MAX; cnt++) {
-		if (searching_function(candela_level[cnt],
-			&(bl_index[cnt]), GAMMA_CURVE_2P2)) {
-			pr_info("%s searching functioin error cnt:%d\n",
-			__func__, cnt);
-		}
-	}
-
-	/*
-	*	Candela compensation
-	*/
-	for (cnt = 1; cnt < S6E3_TABLE_MAX; cnt++) {
-		table_index = find_cadela_table(pSmart->brightness_level);
-
-		if (table_index == -1) {
-			table_index = CCG6_MAX_TABLE;
-			pr_info("%s fail candela table_index cnt : %d brightness %d",
-				__func__, cnt, pSmart->brightness_level);
-		}
-
-		bl_index[S6E3_TABLE_MAX - cnt] +=
-			gradation_offset_K_fhd_revI[table_index][cnt - 1];
-
-		/* THERE IS M-GRAY0 target */
-		if (bl_index[S6E3_TABLE_MAX - cnt] == 0)
-			bl_index[S6E3_TABLE_MAX - cnt] = 1;
-	}
-
-#ifdef SMART_DIMMING_DEBUG
-	printk(KERN_INFO "\n bl_index_1:%d  bl_index_3:%d  bl_index_11:%d",
-		bl_index[0], bl_index[1], bl_index[2]);
-	printk(KERN_INFO "bl_index_23:%d bl_index_35:%d  bl_index_51:%d",
-		bl_index[3], bl_index[4], bl_index[5]);
-	printk(KERN_INFO "bl_index_87:%d  bl_index_151:%d bl_index_203:%d",
-		bl_index[6], bl_index[7], bl_index[8]);
-	printk(KERN_INFO "bl_index_255:%d\n", bl_index[9]);
-#endif
-	/*Generate Gamma table*/
-	for (cnt = 0; cnt < S6E3_TABLE_MAX; cnt++)
-		(void)Make_hexa[cnt](bl_index , pSmart, str);
-
-	/*
-	*	RGB compensation
-	*/
-	for (cnt = 0; cnt < RGB_COMPENSATION; cnt++) {
-		table_index = find_cadela_table(pSmart->brightness_level);
-
-		if (table_index == -1) {
-			table_index = CCG6_MAX_TABLE;
-			pr_info("%s fail RGB table_index cnt : %d brightness %d",
-				__func__, cnt, pSmart->brightness_level);
-		}
-
-		if (cnt < 3) {
-			level_V255 = str[cnt * 2] << 8 | str[(cnt * 2) + 1];
-			level_V255 +=
-				rgb_offset_K_fhd_revI[table_index][cnt];
-			level_255_temp_MSB = level_V255 / 256;
-
-			str[cnt * 2] = level_255_temp_MSB & 0xff;
-			str[(cnt * 2) + 1] = level_V255 & 0xff;
-		} else {
-			str[cnt+3] += rgb_offset_K_fhd_revI[table_index][cnt];
-		}
-	}
-	/*subtration MTP_OFFSET value from generated gamma table*/
-	mtp_offset_substraction(pSmart, str);
-}
-
-#if defined(CONFIG_LCD_HMT)
 static int gradation_offset_K_wqhd_revB[][9] = {
 /*	V255 V203 V151 V87 V51 V35 V23 V11 V3 */
 	{0, 11, 20, 28, 34, 35, 38, 40, 40},
@@ -3397,7 +2775,7 @@ static void gamma_init_K_wqhd_revF(struct SMART_DIM *pSmart, char *str, int size
 	mtp_offset_substraction(pSmart, str);
 }
 
-
+#if defined(CONFIG_LCD_HMT)
 
 #define CCG6_MAX_TABLE_HMT 3
 static int ccg6_candela_table_hmt[][2] = {
@@ -3454,7 +2832,7 @@ static void gamma_init_K_fhd_revE_hmt(struct SMART_DIM *pSmart, char *str, int s
 	int cnt;
 	int table_index;
 
-	pr_debug("%s : start !!\n",__func__);
+	pr_info("%s : start !!\n",__func__);
 
 	/*calculate candela level */
 	if (pSmart->brightness_level == 80)
@@ -3590,7 +2968,7 @@ static void gamma_init_K_fhd_revE_hmt_single(struct SMART_DIM *pSmart, char *str
 	int cnt;
 	int table_index;
 
-	pr_debug("%s : start !!\n",__func__);
+	pr_info("%s : start !!\n",__func__);
 
 	/*calculate candela level */
 	if (pSmart->brightness_level == 80)
@@ -3726,7 +3104,7 @@ static void gamma_init_K_wqhd_hmt(struct SMART_DIM *pSmart, char *str, int size)
 	int cnt;
 	int table_index;
 
-	pr_debug("%s : start !!\n",__func__);
+	pr_info("%s : start !!\n",__func__);
 
 	/*calculate candela level */
 	if (pSmart->brightness_level == 80)
@@ -3862,7 +3240,7 @@ static void gamma_init_K_wqhd_hmt_single(struct SMART_DIM *pSmart, char *str, in
 	int cnt;
 	int table_index;
 
-	pr_debug("%s : start !!\n",__func__);
+	pr_info("%s : start !!\n",__func__);
 
 	/*calculate candela level */
 	if (pSmart->brightness_level == 80)
@@ -4209,7 +3587,10 @@ static int smart_dimming_init(struct SMART_DIM *psmart)
 	print_RGB_offset(psmart);
 #endif
 
+	if (get_lcd_panel_res()) // 1 : FHD
 		psmart->vregout_voltage = S6E3_VREG0_REF_6P3;
+	else // 0 : WQHD
+		psmart->vregout_voltage = S6E3_VREG0_REF_6P2;
 
 	v255_adjustment(psmart);
 	vt_adjustment(psmart);
@@ -4236,23 +3617,23 @@ static int smart_dimming_init(struct SMART_DIM *psmart)
 		psmart->gen_table[lux_loop].lux = psmart->plux_table[lux_loop];
 
 #if defined(AID_OPERATION)
-		if (get_lcd_ldi_info()) { /* SLSI_PANEL */
+		if (get_lcd_panel_res()) { // 1 : FHD
 			if (id3 <= EVT0_K_fhd_REVF)
 				gamma_init_K_fhd_revE(psmart,
 					(char *)(&(psmart->gen_table[lux_loop].gamma_setting)),
 					GAMMA_SET_MAX);
-			else if ((id3 == EVT1_K_fhd_REVH) || (id3 == EVT0_K_fhd_REVG))
-				gamma_init_K_fhd_revG(psmart,
-					(char *)(&(psmart->gen_table[lux_loop].gamma_setting)),
-					GAMMA_SET_MAX);
-			else if (id3 >= EVT1_K_fhd_REVI)
-				gamma_init_K_fhd_revI(psmart,
-					(char *)(&(psmart->gen_table[lux_loop].gamma_setting)),
-					GAMMA_SET_MAX);				
-			
-		} else {	/*MAGNA_PANEL*/
-			if (id3 >= EVT2_K_fhd_magna_REVA)
-				gamma_init_K_fhd_revI(psmart,
+		} else {	/* 0 : WQHD */
+			if (id3 == EVT0_K_wqhd_REVB 
+				|| id3 == EVT0_K_wqhd_REVC || id3 == EVT0_K_wqhd_REVD)
+				gamma_init_K_wqhd_revB(psmart,
+				(char *)(&(psmart->gen_table[lux_loop].gamma_setting)),
+				GAMMA_SET_MAX);
+			else if (id3 == EVT0_K_wqhd_REVE )
+				gamma_init_K_wqhd_revE(psmart,
+				(char *)(&(psmart->gen_table[lux_loop].gamma_setting)),
+				GAMMA_SET_MAX);
+			else if (id3 == EVT0_K_wqhd_REVF )
+				gamma_init_K_wqhd_revF(psmart,
 				(char *)(&(psmart->gen_table[lux_loop].gamma_setting)),
 				GAMMA_SET_MAX);
 		}
@@ -4334,7 +3715,7 @@ static int smart_dimming_init_hmt(struct SMART_DIM *psmart, int dual)
 	id2 = (psmart->ldi_revision & 0x0000FF00) >> 8;
 	id3 = psmart->ldi_revision & 0xFF;
 
-	pr_debug("[HMT] %s : ++\n",__func__);
+	pr_info("[HMT] %s : ++\n",__func__);
 
 	mtp_sorting(psmart);
 	gamma_cell_determine(psmart->ldi_revision);
@@ -4373,7 +3754,7 @@ static int smart_dimming_init_hmt(struct SMART_DIM *psmart, int dual)
 		psmart->gen_table[lux_loop].lux = psmart->plux_table[lux_loop];
 #if defined(AID_OPERATION)
 		if (get_lcd_panel_res()) { // 1 : FHD
-			if (id3 <= EVT1_K_fhd_REVH) {
+			if (id3 <= EVT0_K_fhd_REVF) {
 				if (dual)
 					gamma_init_K_fhd_revE_hmt(psmart,
 						(char *)(&(psmart->gen_table[lux_loop].gamma_setting)),

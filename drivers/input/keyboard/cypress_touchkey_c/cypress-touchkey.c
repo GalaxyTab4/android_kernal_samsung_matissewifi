@@ -316,6 +316,14 @@ void cypress_power_onoff(struct cypress_touchkey_info *info, int onoff)
 					"Regulator(vdd_led) get failed rc = %ld\n", PTR_ERR(info->vdd_led));
 				return;
 			}
+
+			rc = regulator_set_voltage(info->vdd_led,
+				3300000, 3300000);
+			if (rc) {
+				dev_err(&info->client->dev,
+					"regulator(vdd_led) set_vtg failed rc=%d\n", rc);
+				return;
+			}
 		}
 	}
 
@@ -784,6 +792,8 @@ static int tkey_fw_update(struct cypress_touchkey_info *info, bool force)
 			"%s : touchkey_update failed... retry...\n", __func__);
 	}
 
+	cypress_config_gpio_i2c(info->pdata, 1);
+
 	if (retry <= 0) {
 		dev_err(&client->dev, "%s : touchkey_update fail\n", __func__);
 		return -1;
@@ -858,7 +868,7 @@ static ssize_t cypress_touchkey_update_write(struct device *dev,
 		case 's':
 		case 'S':
 			fw_path = FW_BUILT_IN;
-#if !defined(CONFIG_MACH_JS01LTEDCM) && !defined(CONFIG_MACH_JS01LTESBM) && !defined(CONFIG_MACH_BERLUTILTE_COMMON)
+#if !defined(CONFIG_MACH_JS01LTEDCM) && !defined(CONFIG_MACH_JS01LTESBM)
 			if(info->touchkeyid == CYPRESS_TOUCHKEY && info->support_fw_update == false) {
 				dev_err(&client->dev, "%s: module %x does not support fw update\n.", __func__, info->module_ver);
 				return size;
@@ -977,7 +987,7 @@ static ssize_t cypress_touchkey_sensitivity_control(struct device *dev,
 	return size;
 }
 
-static ssize_t cypress_touchkey_recent_show(struct device *dev,
+static ssize_t cypress_touchkey_menu_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct cypress_touchkey_info *info = dev_get_drvdata(dev);
@@ -991,7 +1001,7 @@ static ssize_t cypress_touchkey_recent_show(struct device *dev,
 	ret = cypress_touchkey_i2c_read(info->client, KEYCODE_REG, data, 14);
 
 	dev_dbg(&info->client->dev, "called %s data[10] =%d,data[11] = %d\n", __func__,
-			data[10], data[11]);
+	       data[10], data[11]);
 
 	menu_sensitivity = ((0x00FF & data[10]) << 8) | data[11];
 
@@ -1012,7 +1022,7 @@ static ssize_t cypress_touchkey_back_show(struct device *dev,
 	ret = cypress_touchkey_i2c_read(info->client, KEYCODE_REG, data, 14);
 
 	dev_dbg(&info->client->dev, "called %s data[12] =%d,data[13] = %d\n", __func__,
-			data[12], data[13]);
+	       data[12], data[13]);
 
 	back_sensitivity = ((0x00FF & data[12]) << 8) | data[13];
 
@@ -1355,8 +1365,8 @@ static DEVICE_ATTR(brightness, S_IRUGO | S_IWUSR | S_IWGRP,
 		NULL, cypress_touchkey_led_control);
 static DEVICE_ATTR(touch_sensitivity, S_IRUGO | S_IWUSR | S_IWGRP,
 		NULL, cypress_touchkey_sensitivity_control);
-static DEVICE_ATTR(touchkey_recent, S_IRUGO,
-		cypress_touchkey_recent_show, NULL);
+static DEVICE_ATTR(touchkey_menu, S_IRUGO,
+		cypress_touchkey_menu_show, NULL);
 static DEVICE_ATTR(touchkey_raw_data0, S_IRUGO,
 		cypress_touchkey_raw_data0_show, NULL);
 static DEVICE_ATTR(touchkey_idac0, S_IRUGO,
@@ -1400,7 +1410,7 @@ static struct attribute *touchkey_attributes[] = {
 	&dev_attr_touchkey_firm_update.attr,
 	&dev_attr_brightness.attr,
 	&dev_attr_touch_sensitivity.attr,
-	&dev_attr_touchkey_recent.attr,
+	&dev_attr_touchkey_menu.attr,
 	&dev_attr_touchkey_raw_data0.attr,
 	&dev_attr_touchkey_idac0.attr,
 	&dev_attr_touchkey_back.attr,
@@ -1482,7 +1492,7 @@ static int load_fw_in_sdcard(struct cypress_touchkey_info *info)
 	set_fs(KERNEL_DS);
 
 	fp = filp_open(fw_name, O_RDONLY, S_IRUSR);
-	if (IS_ERR(fp)) {
+	if (!fp) {
 		dev_err(&client->dev, "%s: fail to open fw in %s\n",
 			__func__, fw_name);
 		ret = -ENOENT;
@@ -1583,7 +1593,7 @@ static int tkey_flash_fw(struct cypress_touchkey_info *info, u8 fw_path, bool fo
 
 	/* firmware version compare */
 
-#if defined(CONFIG_MACH_JS01LTEDCM) || defined(CONFIG_MACH_JS01LTESBM) || defined(CONFIG_MACH_BERLUTILTE_COMMON)
+#if defined(CONFIG_MACH_JS01LTEDCM) || defined(CONFIG_MACH_JS01LTESBM)
 	if (info->ic_fw_ver >= info->src_fw_ver && !force) {
 #else
 	if ((info->ic_fw_ver >= info->src_fw_ver && !force) || info->support_fw_update == false) {
@@ -1688,7 +1698,7 @@ static int cypress_parse_dt(struct device *dev,
 	/* regulator info */
 	pdata->vcc_flag = of_property_read_bool(np, "vcc_en-supply");
 	pdata->i2c_pull_up = of_property_read_bool(np, "cypress,i2c-pull-up");
-	pdata->vdd_led = of_get_named_gpio(np, "vdd_led-gpio", 0);
+//	pdata->vdd_led = of_get_named_gpio(np, "vdd_led-gpio", 0);
 
 	/* reset, irq gpio info */
 	pdata->gpio_scl = of_get_named_gpio_flags(np, "cypress,scl-gpio",
@@ -1985,7 +1995,6 @@ static int cypress_touchkey_suspend(struct device *dev)
 	if (info->pdata->gpio_led_en)
 		cypress_touchkey_con_hw(info, false);
 	cypress_power_onoff(info, 0);	
-	gpio_tlmm_config(GPIO_CFG(info->pdata->gpio_int, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), 1);
 	info->enabled = false;
 	return ret;
 }
@@ -1995,7 +2004,6 @@ static int cypress_touchkey_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct cypress_touchkey_info *info = i2c_get_clientdata(client);
 	int ret = 0;
-	gpio_tlmm_config(GPIO_CFG(info->pdata->gpio_int, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA), 1);
 	cypress_power_onoff(info, 1);
 	if (info->pdata->gpio_led_en)
 		cypress_touchkey_con_hw(info, true);

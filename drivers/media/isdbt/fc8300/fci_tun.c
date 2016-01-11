@@ -31,7 +31,7 @@
 #include "fc8300_tun.h"
 #include "fci_oal.h"
 
-#define FC8300_TUNER_ADDR	0x58
+#define FC8300_TUNER_ADDR	0x56
 
 struct I2C_DRV {
 	int (*init)(HANDLE handle, DEVICEID devid,

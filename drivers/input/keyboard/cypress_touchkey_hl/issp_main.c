@@ -372,7 +372,7 @@ date      revision  author  description
 #include "issp_directives.h"
 #include "issp_defs.h"
 #include "issp_errors.h"
-#include <linux/i2c/touchkey_hl.h>
+#include "touchkey_i2c.h"
 
 struct touchkey_i2c *issp_tkey_i2c;
 
@@ -698,7 +698,7 @@ RAM Load, FLASHBlock Program, and Target Checksum Verification.*/
 
 	/*INTLOCK(); */
 	/* issp_test_20100709 unblock */
-	// fVerifySiliconID();
+	fVerifySiliconID();
 #if 0
 	fIsError = fVerifySiliconID();
 	if (fIsError) {

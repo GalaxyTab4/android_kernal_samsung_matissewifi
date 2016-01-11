@@ -17,6 +17,38 @@
  */
 
 /include/ "msm8974-v2.2-sec.dtsi"
+/include/ "apq8074-v2.2-ion.dtsi"
+
+/ {
+        memory {
+		/* Samsung added this memory hole but it's not clear to me
+		 * what it is used for.  Carve it out for whatever magic needs it */
+		other_mem {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+                        reg = <0x6c00000 0x900000>;
+			label = "other_mem";
+		};
+
+                alt_peripheral_mem: peripheral_region@a700000 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+                        reg = <0x0a100000 0x6100000>;
+			label = "peripheral_mem";
+		};
+
+		adsp_venus_mem: adsp_venus_region@0xd000000 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+                        reg = <0xf500000 0x500000>;
+			label = "adsp_venus_mem";
+
+		};
+        };
+};
 
 &soc {
 	qcom,qseecom@a100000 {
@@ -30,19 +62,12 @@
 		qcom,msm-bus,num-cases = <4>;
 		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,num-paths = <1>;
-		qcom,support-fde;
-		qcom,support-bus-scaling;
 		qcom,msm-bus,vectors-KBps =
 				<55 512 0 0>,
-				<55 512 0 0>,
-				<55 512 120000 1200000>,
-				<55 512 393600 3936000>;
+				<55 512 3936000 393600>,
+				<55 512 3936000 393600>,
+				<55 512 3936000 393600>;
 	};
-};
-
-&memory_hole {
-	qcom,memblock-remove = <0x6c00000 0x900000
-				0xa100000 0x6100000>; /* Address and size of the hole */
 };
 
 &qseecom {

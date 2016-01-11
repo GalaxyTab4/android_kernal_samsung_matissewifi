@@ -260,10 +260,6 @@ static struct msm_gpiomux_config gpio_nc_configs[] __initdata = {
 	GPIOMUX_SET_NC(30),
 	GPIOMUX_SET_NC(63),
 	GPIOMUX_SET_NC(103),
-#if defined(CONFIG_MACH_PICASSO_SPR)
-	GPIOMUX_SET_NC(138),
-	GPIOMUX_SET_NC(139),
-#endif
 };
 
 static struct gpiomux_setting gpio_epm_config = {

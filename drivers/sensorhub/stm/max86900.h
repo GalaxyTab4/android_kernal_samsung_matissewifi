@@ -62,9 +62,7 @@
 typedef enum _PART_TYPE
 {
 	PART_TYPE_MAX86900 = 0,
-	PART_TYPE_MAX86900A,
-	PART_TYPE_MAX86900B,
-	PART_TYPE_MAX86900C,
+	PART_TYPE_MAX86900A
 } PART_TYPE;
 
 struct max86900_platform_data
@@ -81,16 +79,9 @@ struct max86900_device_data
 	struct mutex i2clock;
 	struct mutex activelock;
 	struct regulator *vdd_1p8;
-#if defined(CONFIG_SEC_KACTIVE_PROJECT) || defined(CONFIG_MACH_KSPORTSLTE_SPR)
-	struct regulator *vdd_3p3;
-#endif
 	const char *sub_ldo4;
-#if defined(CONFIG_SEC_KACTIVE_PROJECT) || defined(CONFIG_MACH_KSPORTSLTE_SPR)
-	const char *led_l19;
-#endif
 	bool *bio_status;
-	atomic_t is_enable;
-	atomic_t is_suspend;
+	u8 is_enable;
 	u8 led_current;
 	u8 hr_range;
 	u8 hr_range2;
@@ -108,9 +99,6 @@ struct max86900_device_data
 	int irq;
 	int hrm_temp;
 	char *eol_test_result;
-	char *lib_ver;
-	int ir_sum;
-	int r_sum;
 };
 
 extern int sensors_create_symlink(struct kobject *target, const char *name);

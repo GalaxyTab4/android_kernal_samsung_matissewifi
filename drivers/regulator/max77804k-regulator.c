@@ -65,6 +65,8 @@ static const struct voltage_map_desc *reg_voltage_map[] = {
 
 static inline int max77804k_get_rid(struct regulator_dev *rdev)
 {
+	if (rdev == NULL)
+		return -EINVAL;
 	dev_dbg(&rdev->dev, "func:%s\n", __func__);
 	return rdev_get_id(rdev);
 }
@@ -250,14 +252,7 @@ static int max77804k_get_voltage(struct regulator_dev *rdev)
 	int reg, shift, mask, ret;
 
 	u8 val;
-
 	dev_info(&rdev->dev, "func:%s\n", __func__);
-
-	if (rdev->desc == NULL) {
-		dev_err(&rdev->dev, "func:%s rdev->desc is null\n", __func__);
-		return -EINVAL;
-	}
-
 	ret = max77804k_get_voltage_register(rdev, &reg, &shift, &mask);
 	if (ret)
 		return ret;

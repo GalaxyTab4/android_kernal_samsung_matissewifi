@@ -123,7 +123,6 @@
 #define TSP_CMD_STR_LEN 32
 #define TSP_CMD_RESULT_STR_LEN 512
 #define TSP_CMD_PARAM_NUM 8
-#define tostring(x) #x
 #endif /* SEC_TSP_FACTORY_TEST */
 
 /* START - Added to support API's for TSP tuning */
@@ -183,11 +182,8 @@ static int tsp_power_enabled;
 
 /* EELY panel */
 #define BOOT_VERSION_EL 0x1
-#define CORE_VERSION_EL 0x78
-#if defined(CONFIG_MACH_MILLET3G_CHN_OPEN)
-#define FW_VERSION_DATE "140415"
-#endif
-#define FW_VERSION_EL 0x17
+#define CORE_VERSION_EL 0x76
+#define FW_VERSION_EL 0x4
 
 #define MAX_FW_PATH 255
 #define TSP_FW_FILENAME "melfas_fw.bin"
@@ -426,7 +422,6 @@ static void module_off_master(void *device_data);
 static void module_on_master(void *device_data);
 /*static void module_off_slave(void *device_data);
 static void module_on_slave(void *device_data);*/
-static void get_module_vendor(void *device_data);
 static void get_chip_vendor(void *device_data);
 static void get_chip_name(void *device_data);
 static void get_reference(void *device_data);
@@ -456,7 +451,6 @@ struct tsp_cmd tsp_cmds[] = {
 	{TSP_CMD("module_off_slave", not_support_cmd),},
 	{TSP_CMD("module_on_slave", not_support_cmd),},
 	{TSP_CMD("get_chip_vendor", get_chip_vendor),},
-	{TSP_CMD("get_module_vendor", get_module_vendor),},
 	{TSP_CMD("get_chip_name", get_chip_name),},
 	{TSP_CMD("get_x_num", get_x_num),},
 	{TSP_CMD("get_y_num", get_y_num),},
@@ -712,10 +706,7 @@ static void reset_mms_ts(struct mms_ts_info *info)
 		return;
 
 	dev_notice(&client->dev, "%s++\n", __func__);
-	/* Disabling irq as it is not required since we're using oneshot irq
-	* and this function is called only from the irq handler
-	*/
-	//disable_irq_nosync(info->irq);
+	disable_irq_nosync(info->irq);
 	info->enabled = false;
 
 	touch_is_pressed = 0;
@@ -733,7 +724,7 @@ static void reset_mms_ts(struct mms_ts_info *info)
 	}
 	mms_set_noise_mode(info);
 
-	//enable_irq(info->irq);
+	enable_irq(info->irq);
 
 	dev_notice(&client->dev, "%s--\n", __func__);
 }
@@ -786,10 +777,6 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 			.buf = buf,
 		},
 	};
-
-	mutex_lock(&info->lock);
-	if (!info->enabled)
-		goto out;
 
 	sz = i2c_smbus_read_byte_data(client, MMS_INPUT_EVENT_PKT_SZ);
 	if (sz < 0) {
@@ -846,13 +833,8 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 
 #endif
 	if (buf[0] == 0x0F) {	/* ESD */
-		if(buf[1] == 0x00)
-		{
-			dev_dbg(&client->dev, "ESD DETECT.... reset!!\n");
-			reset_mms_ts(info);
-		}
-		else
-			dev_dbg(&client->dev, "Recal Notify %d.... reset!!\n", buf[1]);
+		dev_dbg(&client->dev, "ESD DETECT.... reset!!\n");
+		reset_mms_ts(info);
 		goto out;
 	}
 
@@ -990,13 +972,8 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 			ABS_MT_POSITION_X, x);
 		input_report_abs(info->input_dev,
 			ABS_MT_POSITION_Y, y);
-#if defined(CONFIG_MACH_MILLETLTE_VZW)
-		input_report_abs(info->input_dev,
-			ABS_MT_WIDTH_MAJOR, (1229*tmp[4]) >>10); //ABS_MT_WIDTH_MAJOR * 1.2 (only for VZW)
-#else
 		input_report_abs(info->input_dev,
 			ABS_MT_WIDTH_MAJOR, tmp[4]);
-#endif
 		input_report_abs(info->input_dev,
 			ABS_MT_TOUCH_MAJOR, tmp[6]);
 		input_report_abs(info->input_dev,
@@ -1016,17 +993,10 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 		if (info->finger_state[id] == 0) {
 			info->finger_state[id] = 1;
 			touch_is_pressed++;
-#if defined(CONFIG_MACH_MILLETLTE_VZW)
-			dev_notice(&client->dev,
-				"P [%2d],([%3d],[%4d]) w=%d, major=%d, minor=%d, angle=%d, palm=%d(%d)",
-				id, x, y,((1229*tmp[4]) >>10), tmp[6], tmp[7],
-				angle, palm, info->panel);
-#else
 			dev_notice(&client->dev,
 				"P [%2d],([%3d],[%4d]) w=%d, major=%d, minor=%d, angle=%d, palm=%d(%d)",
 				id, x, y, tmp[4], tmp[6], tmp[7],
 				angle, palm, info->panel);
-#endif
 		}
 #endif /* CONFIG_SAMSUNG_PRODUCT_SHIP */
 	}
@@ -1037,7 +1007,6 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 #endif
 
 out:
-	mutex_unlock(&info->lock);
 	return IRQ_HANDLED;
 }
 
@@ -1555,12 +1524,7 @@ static void not_support_cmd(void *device_data)
 	set_default_result(info);
 	sprintf(buff, "%s", "NA");
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-
-	mutex_lock(&info->cmd_lock);
-	info->cmd_is_running = false;
-	mutex_unlock(&info->cmd_lock);
-
-	info->cmd_state = WAITING;
+	info->cmd_state = NOT_APPLICABLE;
 	dev_info(&info->client->dev, "%s: \"%s(%d)\"\n", __func__,
 				buff, strnlen(buff, sizeof(buff)));
 	return;
@@ -2116,11 +2080,7 @@ static void get_config_ver(void *device_data)
 	if (info->panel == ILJIN)
 		snprintf(buff, sizeof(buff), "T311_Me_0608_IJ");
 	else if (info->panel == EELY)
-		#if defined(CONFIG_MACH_MILLET3G_CHN_OPEN)
-		snprintf(buff, sizeof(buff), "SM-T331C_ME_%s", FW_VERSION_DATE);
-		#else
 		snprintf(buff, sizeof(buff), "T335_ME_0x%02x", FW_VERSION_EL);
-		#endif
 	else
 		snprintf(buff, sizeof(buff), "T311_Me_0608_UN");
 
@@ -2172,7 +2132,7 @@ static void module_off_master(void *device_data)
 
 	mutex_lock(&info->lock);
 	if (info->enabled) {
-		disable_irq_nosync(info->irq);
+		disable_irq(info->irq);
 		info->enabled = false;
 		touch_is_pressed = 0;
 	}
@@ -2242,43 +2202,6 @@ static void module_on_slave(void *device_data)
 	not_support_cmd(info);
 }
 */
-static void get_module_vendor(void *device_data)
-{
-	struct mms_ts_info *info = (struct mms_ts_info *)device_data;
-	char buff[16] = {0};
-	int val,val2;
-
-	set_default_result(info);
-	if (!(gpio_get_value(info->pdata->vdd_en) && 
-				gpio_get_value(info->pdata->vdd_en2))) {
-		dev_err(&info->client->dev, "%s: [ERROR] Touch is stopped\n",
-				__func__);
-		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
-		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-		info->cmd_state = NOT_APPLICABLE;
-		return;
-	}
-	if (info->pdata->tsp_vendor1 > 0 && info->pdata->tsp_vendor2 > 0 ) {
-		gpio_tlmm_config(GPIO_CFG(info->pdata->tsp_vendor1, 0,
-				GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), 1);
-		gpio_tlmm_config(GPIO_CFG(info->pdata->tsp_vendor2, 0,
-				GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), 1);
-		val = gpio_get_value(info->pdata->tsp_vendor1);
-		val2 = gpio_get_value(info->pdata->tsp_vendor2);
-		dev_info(&info->client->dev,
-			"%s: TSP_ID: %d[%d]%d[%d]\n", __func__,
-			info->pdata->tsp_vendor1, val,info->pdata->tsp_vendor2, val2);
-
-		snprintf(buff, sizeof(buff), "%s,%d%d", tostring(OK), val,val2);
-		info->cmd_state = OK;
-		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-
-		return;
-	}
-	snprintf(buff, sizeof(buff),  "%s", tostring(NG));
-	info->cmd_state = FAIL;
-	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-}
 static void get_chip_vendor(void *device_data)
 {
 	struct mms_ts_info *info = (struct mms_ts_info *)device_data;
@@ -3126,7 +3049,7 @@ static ssize_t show_intensity_logging_off(struct device *dev,
 #endif
 
 static DEVICE_ATTR(close_tsp_test, S_IRUGO, show_close_tsp_test, NULL);
-static DEVICE_ATTR(cmd, S_IWUSR | S_IWGRP, NULL, store_cmd);
+static DEVICE_ATTR(cmd, S_IWUSR | S_IWGRP | S_IWOTH, NULL, store_cmd);
 static DEVICE_ATTR(cmd_status, S_IRUGO, show_cmd_status, NULL);
 static DEVICE_ATTR(cmd_result, S_IRUGO, show_cmd_result, NULL);
 #if TOUCHKEY
@@ -3167,12 +3090,8 @@ static struct attribute_group sec_touch_factory_attr_group = {
 static DEVICE_ATTR(brightness, S_IRUGO | S_IWUSR | S_IWGRP, NULL,
 			touch_led_control);
 
-static struct attribute *sec_touchkeyled_attributes[] = {
-	&dev_attr_brightness.attr,
-	NULL,
-};
-
 static struct attribute *sec_touchkey_attributes[] = {
+	&dev_attr_brightness.attr,
 #ifdef SEC_TSP_FACTORY_TEST
 	&dev_attr_touchkey_threshold.attr,
 	&dev_attr_touchkey_recent.attr,
@@ -3181,10 +3100,6 @@ static struct attribute *sec_touchkey_attributes[] = {
 	&dev_attr_touchkey_firm_version_phone.attr,
 #endif
 	NULL,
-};
-
-static struct attribute_group sec_touchkeyled_attr_group = {
-	.attrs = sec_touchkeyled_attributes,
 };
 
 static struct attribute_group sec_touchkey_attr_group = {
@@ -3203,27 +3118,8 @@ static int mms_ts_fw_check(struct mms_ts_info *info)
 	if (ret < 0) {		/* tsp connect check */
 		pr_err("%s: i2c fail...[%d], addr[%d]\n",
 			   __func__, ret, info->client->addr);
-#if defined(CONFIG_MACH_MILLET3G_CHN_OPEN)
-		retry = 4;
-		while (retry)
-		{
-		    ret = i2c_master_recv(client, buf, 1);
-		    if(ret > 0 && ret == 0)
-		    {
-		       break;
-		    }
-		    msleep(10);
-		    retry--;		  
-		}
-		if (retry == 0 && ret < 0)
-		{
-		    pr_info("[TSP] force update firmware \n");
-		    update = true;
-		}
-#else
 		pr_err("%s: tsp driver unload\n", __func__);
 		return ret;
-#endif	
 	}
 	if (info->panel == EELY)
 		dev_info(&client->dev,
@@ -3237,17 +3133,7 @@ static int mms_ts_fw_check(struct mms_ts_info *info)
 
 	if (info->panel == ILJIN)
 	{
-#if defined(CONFIG_MACH_MILLET3G_CHN_OPEN)	
-		if (!update)	{
-		    ret = get_fw_version(info);
-		}
-		else {
-		    ret = 0;
-		}
-		
-#else
 		ret = get_fw_version(info);
-#endif
 		if (ret != 0) {
 			dev_err(&client->dev, "fw_version read fail\n");
 			update = true;
@@ -3281,16 +3167,7 @@ static int mms_ts_fw_check(struct mms_ts_info *info)
 	}
 	else if (info->panel == EELY)
 	{
-#if defined(CONFIG_MACH_MILLET3G_CHN_OPEN)
-		if (!update){
-		    ret = get_fw_version(info);
-		}
-		else {
-		    ret = 0;
-		}
-#else
 		ret = get_fw_version(info);
-#endif
 		if (ret != 0) {
 			dev_err(&client->dev, "fw_version read fail\n");
 			update = true;
@@ -3381,13 +3258,11 @@ static void melfas_request_gpio(struct melfas_tsi_platform_data *pdata)
 				__func__, pdata->tsp_vendor2);
 		return;
 	}
-	if(pdata->tkey_led_en >= 0){
-		ret = gpio_request(pdata->tkey_led_en, "tkey_enable");
-		if (ret) {
-			pr_err("[TSP]%s: unable to request tkey_enable [%d]\n",
-					__func__, pdata->tkey_led_en);
-			return;
-		}
+	ret = gpio_request(pdata->tkey_led_en, "tkey_enable");
+	if (ret) {
+		pr_err("[TSP]%s: unable to request tkey_enable [%d]\n",
+				__func__, pdata->tkey_led_en);
+		return;
 	}
 }
 
@@ -3466,8 +3341,8 @@ int melfas_power(struct mms_ts_info *info, int on){
 	gpio_tlmm_config(GPIO_CFG(info->pdata->vdd_en,0,GPIO_CFG_OUTPUT,GPIO_CFG_NO_PULL, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
 	gpio_tlmm_config(GPIO_CFG(info->pdata->vdd_en2,0,GPIO_CFG_OUTPUT,GPIO_CFG_NO_PULL, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
 	gpio_set_value(info->pdata->vdd_en,on);
-	gpio_set_value(info->pdata->vdd_en2,on);
 	msleep(20);
+	gpio_set_value(info->pdata->vdd_en2,on);
 	tsp_power_enabled = on;
 	return 0;
 }
@@ -3478,9 +3353,7 @@ int key_led_control(struct mms_ts_info *info, int on)
 
 	printk(KERN_DEBUG "[TSP] %s %s\n",
 		__func__, on ? "on" : "off");
-	if(info->pdata->tkey_led_en >= 0){
-		gpio_set_value(info->pdata->tkey_led_en,on);
-	}
+	gpio_set_value(info->pdata->tkey_led_en,on);
 	return 0;
 }
 
@@ -3500,10 +3373,6 @@ static int mms_parse_dt(struct device *dev,
 	pdata->vdd_en = of_get_named_gpio(np, "vdd_en-gpio", 0);
 	pdata->vdd_en2 = of_get_named_gpio(np, "vdd_en2-gpio", 0);
 	pdata->tkey_led_en = of_get_named_gpio(np, "tkey_en-gpio", 0);
-	if(pdata->tkey_led_en < 0){
-		pr_info("[TSP] error %d requesting ledgpio, ignoring\n",
-							pdata->tkey_led_en);
-	}
 	pdata->tsp_vendor1 = of_get_named_gpio(np, "tsp_vendor1-gpio", 0);
 	pdata->tsp_vendor2 = of_get_named_gpio(np, "tsp_vendor2-gpio", 0);
 
@@ -3889,9 +3758,6 @@ static void mms_ts_input_close(struct input_dev *dev)
 
 void melfas_register_callback(void *);
 
-#if defined(CONFIG_FB_MSM8x26_MDSS_CHECK_LCD_CONNECTION)
-extern int get_lcd_attached(void);
-#endif
 static int __devinit mms_ts_probe(struct i2c_client *client,
 				  const struct i2c_device_id *id)
 {
@@ -3910,12 +3776,6 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	struct device *touchkey_dev;
 #endif
 	touch_is_pressed = 0;
-#if defined(CONFIG_FB_MSM8x26_MDSS_CHECK_LCD_CONNECTION)
-	if (get_lcd_attached() == 0) {
-		dev_err(&client->dev, "%s : get_lcd_attached()=0 \n", __func__);
-		return -EIO;
-	}
-#endif
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_I2C))
 		return -EIO;
@@ -3956,11 +3816,14 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	info->client = client;
 	info->input_dev = input_dev;
 	info->pdata = pdata;
-	if(pdata->tkey_led_en >= 0)
-		info->keyled = key_led_control;
+	info->keyled = key_led_control;
 	ret = get_panel_version(info);
 	if(ret < 0)
 		printk(KERN_INFO "get_panel_version error" );
+	if (NULL == info->pdata) {
+		pr_err("failed to get platform data\n");
+		goto err_config;
+	}
 	info->irq = -1;
 	mutex_init(&info->lock);
 
@@ -3981,8 +3844,7 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 		info->touchkey[i] = 0;
 
 	info->led_cmd = false;
-	if(info->keyled)
-		info->keyled(info, 0);
+	info->keyled(info, 0);
 	info->menu_s = 0;
 	info->back_s = 0;
 #endif
@@ -4118,10 +3980,10 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 		dev_err(&client->dev, "failed to create sysfs group, debug2 \n");
 		return -EAGAIN;
 	}
-/*	if (sysfs_create_link(NULL, &sec_touchscreen->kobj, "sec_touchscreen")) {
+	if (sysfs_create_link(NULL, &sec_touchscreen->kobj, "sec_touchscreen")) {
 		dev_err(&client->dev, "failed to create sysfs symlink, debug2 \n");
 		return -EAGAIN;
-	}*/
+	}
 
 #endif
 
@@ -4146,14 +4008,6 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 		&sec_touchkey_attr_group);
 	if (ret)
 		dev_err(&client->dev, "Failed to create sysfs group\n");
-
-	if(info->keyled){
-		ret = sysfs_create_group(&touchkey_dev->kobj,
-			&sec_touchkeyled_attr_group);
-		if (ret)
-			dev_err(&client->dev, "Failed to create sysfs group\n");
-	}
-
 #endif
 
 #ifdef SEC_TSP_FACTORY_TEST
@@ -4175,12 +4029,6 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	if (ret)
 		dev_err(&client->dev, "Failed to create sysfs group\n");
 
-	ret = sysfs_create_link(&fac_dev_ts->kobj, &info->input_dev->dev.kobj, "input");
-	if (ret < 0) {
-		dev_err(&client->dev,
-				"%s: Failed to create input symbolic link\n",
-				__func__);
-	}
 #endif
 	return 0;
 
@@ -4189,8 +4037,7 @@ err_req_irq:
 err_reg_input_dev:
 	info->power(info,0);
 #if TOUCHKEY
-	if(info->keyled)
-		info->keyled(info, 0);
+	info->keyled(info, 0);
 #endif
 err_config:
 	input_free_device(input_dev);
@@ -4216,8 +4063,7 @@ static int __devexit mms_ts_remove(struct i2c_client *client)
 
 #if TOUCHKEY
 	if (info->led_cmd)
-		if(info->keyled)
-			info->keyled(info, 0);
+		info->keyled(info, 0);
 #endif
 	unregister_early_suspend(&info->early_suspend);
 	if (info->irq >= 0)
@@ -4236,8 +4082,7 @@ static void mms_ts_shutdown(struct i2c_client *client)
 		info->power(info,0);
 #if TOUCHKEY
 	if (info->led_cmd)
-		if(info->keyled)
-			info->keyled(info, 0);
+		info->keyled(info, 0);
 #endif
 }
 
@@ -4247,23 +4092,21 @@ static int mms_ts_suspend(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct mms_ts_info *info = i2c_get_clientdata(client);
 
-	mutex_lock(&info->lock);
 	if (!info->enabled)
-		goto out;
-	info->enabled = false;
-	disable_irq_nosync(info->irq);
+		return 0;
 
 	dev_notice(&info->client->dev, "%s: users=%d\n", __func__,
 		   info->input_dev->users);
 
+	disable_irq(info->irq);
+	info->enabled = false;
 	touch_is_pressed = 0;
 	release_all_fingers(info);
 	info->power(info,0);
 	info->sleep_wakeup_ta_check = info->ta_status;
 #if TOUCHKEY
 	if (info->led_cmd == true) {
-		if(info->keyled)
-			info->keyled(info, 0);
+		info->keyled(info, 0);
 		info->led_cmd = false;
 	}
 #endif
@@ -4276,8 +4119,6 @@ static int mms_ts_suspend(struct device *dev)
 	dev_info(&info->client->dev,
 			"%s: dvfs_lock free.\n", __func__);
 #endif
-out:
-	mutex_unlock(&info->lock);
 	return 0;
 }
 
@@ -4292,6 +4133,7 @@ static int mms_ts_resume(struct device *dev)
 	dev_notice(&info->client->dev, "%s: users=%d\n", __func__,
 		   info->input_dev->users);
 	info->power(info, 1);
+	msleep(120);
 
 	if (info->threewave_mode)
 		mms_set_threewave_mode(info);

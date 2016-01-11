@@ -24,13 +24,8 @@ struct slot_switch_wq {
 	struct list_head entry;
 };
 
-#ifdef CONFIG_MACH_H3GDUOS_CTC
-#define GPIO_SIM_SEL 142
-#define GPIO_GG_SEL 115
-#else
 #define GPIO_SIM_SEL 123
 #define GPIO_GG_SEL 0
-#endif
 
 static ssize_t get_slot_switch(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -170,7 +165,7 @@ static int __init slot_switch_manager_init(void)
 		printk("%s end \n",__func__);
 	}
 
-#ifdef CONFIG_MACH_H3GDUOS_CTC
+#if 0
 	gpio = GPIO_GG_SEL;
 	err = gpio_request(gpio, "GG_SEL");
 	if (err) {

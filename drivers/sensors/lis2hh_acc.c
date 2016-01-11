@@ -582,7 +582,7 @@ static int lis2hh_acc_device_power_on(struct lis2hh_acc_status *stat)
 			enable_irq(stat->irq2);
 	}
 
-	mdelay(30);
+	mdelay(20);
 
 	if (!stat->hw_initialized) {
 		err = lis2hh_acc_hw_init(stat);

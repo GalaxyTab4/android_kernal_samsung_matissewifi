@@ -751,11 +751,8 @@ static int gs_start_io(struct gs_port *port)
 	port->n_read = 0;
 	started = gs_start_rx(port);
 
-	if (!port->port_usb || !port->port_tty) {
-		printk(KERN_ERR "usb:[%s] port_usb or port_tty is NULL!! started(%d)\n",
-				__func__, started);
+	if (!port->port_usb)
 		return -EIO;
-	}
 	/* unblock any pending writes into our circular buffer */
 	if (started) {
 		tty_wakeup(port->port_tty);
@@ -1210,11 +1207,6 @@ static ssize_t debug_read_status(struct file *file, char __user *ubuf,
 
 	tty = ui_dev->port_tty;
 	gser = ui_dev->port_usb;
-
-	if(!tty || !gser) {
-		printk(KERN_ERR "usb: tty or gser is NULL !!\n");
-		return -EINVAL;
-	}
 
 	buf = kzalloc(sizeof(char) * BUF_SIZE, GFP_KERNEL);
 	if (!buf)

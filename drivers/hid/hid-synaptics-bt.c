@@ -157,7 +157,6 @@ static int hid_synaptics_probe(struct hid_device *hdev, const struct hid_device_
 	input_dev = input_allocate_device();
 	if (!input_dev) {
 		ret = -ENOMEM;
-		kfree(syntp_data);
 		goto hid_stop;
 	}
 
@@ -203,10 +202,7 @@ static int hid_synaptics_probe(struct hid_device *hdev, const struct hid_device_
 	syntp_data->input = input_dev;
 	ret = input_register_device(syntp_data->input);
 	if (ret)
-	{
-		input_free_device(syntp_data->input);
 		goto hid_init_failed;
-	}
 
 	hid_set_drvdata(hdev, syntp_data);
 
@@ -247,13 +243,8 @@ static int samsung_bookcover_input_mapping(struct hid_device *hdev,
 		set_bit(EV_REP, hi->input->evbit);
 		/* Only for UK keyboard */
 		/* key found */
-#ifdef CONFIG_HID_KK_UPGRADE
-		case 0x32: samsung_kbd_mouse_map_key_clear(KEY_KBDILLUMTOGGLE); break;
-		case 0x64: samsung_kbd_mouse_map_key_clear(KEY_BACKSLASH); break;
-#else
 		case 0x32: samsung_kbd_mouse_map_key_clear(KEY_BACKSLASH); break;
 		case 0x64: samsung_kbd_mouse_map_key_clear(KEY_102ND); break;
-#endif
 		/* Only for BR keyboard */
 		case 0x87: samsung_kbd_mouse_map_key_clear(KEY_RO); break;
 		default:
@@ -307,7 +298,7 @@ static int hid_synaptics_mapping(struct hid_device *hdev, struct hid_input *hi,
 {
 	int ret = 0;
 
-	if ((USB_DEVICE_ID_SAMSUNG_WIRELESS_BOOKCOVER == hdev->product) || (USB_DEVICE_ID_SAMSUNG_WIRELESS_BOOKCOVER_TABS2 == hdev->product))
+	if (USB_DEVICE_ID_SAMSUNG_WIRELESS_BOOKCOVER == hdev->product)
 		ret = samsung_bookcover_input_mapping(hdev,
 			hi, field, usage, bit, max);
 
@@ -316,8 +307,6 @@ static int hid_synaptics_mapping(struct hid_device *hdev, struct hid_input *hi,
 
 static const struct hid_device_id hid_synaptics_id[] = {
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_SAMSUNG_ELECTRONICS, USB_DEVICE_ID_SAMSUNG_WIRELESS_BOOKCOVER),
-		.driver_data = 0 },
-	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_SAMSUNG_ELECTRONICS, USB_DEVICE_ID_SAMSUNG_WIRELESS_BOOKCOVER_TABS2),
 		.driver_data = 0 },
 	{ HID_USB_DEVICE(0x06cb, 0x5555),
 		.driver_data = 0 },

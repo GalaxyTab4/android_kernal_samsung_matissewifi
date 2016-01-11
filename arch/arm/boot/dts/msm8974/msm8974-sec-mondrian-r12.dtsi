@@ -18,6 +18,12 @@
 	aliases {
 		serial0 = &blsp1_uart1;
 	};
+
+	memory {
+		fb_mem: fb_region {
+			reg = <0 0x1f40000>;
+		};
+	};
 };
 
 &soc {
@@ -203,7 +209,6 @@
 			battery,fast_charging_current = <2100 0 460 2100 460 1200 1000 460 0 1200 750 2100 2100 0 1300 300 700 1300 300 1000 2100 0 0>;
 			battery,full_check_current_1st = <350 0 350 350 350 350 350 350 0 350 350 350 350 0 350 350 350 350 350 350 350 0 0>;
 			battery,full_check_current_2nd = <1200 0 1200 1200 1200 1200 1200 1200 0 1200 1200 1200 1200 0 1200 1200 1200 1200 1200 1200 1200 0 0>;
-			battery,full_check_current_1st_sdi = <200 0 200 200 200 200 200 200 0 200 200 200 200 0 200 200 200 200 200 200 200 0 0>;
 		};
 	};
 
@@ -283,7 +288,6 @@
 			synaptics,supply-name = "8941_l22", "8941_l10";	/* the name of regulators, in power-on order */
 			synaptics,irq-gpio = <&pm8941_gpios 30 0x1>;
 			synaptics,reset-gpio = <&pm8941_gpios 20 0x1>;
-			synaptics,id-gpio = <&msmgpio 42 0x0>;
 			synaptics,i2c-pull-up = <1>;
 			synaptics,tsp-project = "Mondrian";
 			synaptics,tsp-coords = <1599 2559>;
@@ -844,10 +848,6 @@
 	};
 
 	gpio@d900 { /* GPIO 26 */
-		qcom,mode = <0>;		/* QPNP_PIN_MODE_DIG_IN */
-		qcom,pull = <5>;		/* QPNP_PIN_PULL_NO */
-		qcom,vin-sel = <2>;		/* QPNP_PIN_VIN2 */
-		qcom,src-sel = <0>;		/* QPNP_PIN_SEL_FUNC_CONSTANT */
 	};
 
 	gpio@da00 { /* GPIO 27 */

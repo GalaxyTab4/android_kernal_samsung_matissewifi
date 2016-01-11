@@ -102,6 +102,7 @@ struct bma280_p {
 	int irq1;
 	int irq_state;
 	int acc_int1;
+	int acc_int2;
 	int sda_gpio;
 	int scl_gpio;
 	int time_count;
@@ -966,6 +967,18 @@ static int bma280_setup_pin(struct bma280_p *data)
 		goto exit_acc_int1;
 	}
 
+	ret = gpio_request(data->acc_int2, "ACC_INT2");
+	if (ret < 0) {
+		pr_err("[SENSOR]: %s - gpio %d request failed (%d)\n",
+			__func__, data->acc_int2, ret);
+	} else {
+		ret = gpio_direction_input(data->acc_int2);
+		if (ret < 0)
+			pr_err("[SENSOR]: %s - failed to set gpio %d as input"
+				" (%d)\n", __func__, data->acc_int2, ret);
+		gpio_free(data->acc_int2);
+	}
+
 	goto exit;
 
 exit_acc_int1:
@@ -1030,6 +1043,11 @@ static int bma280_parse_dt(struct bma280_p *data, struct device *dev)
 		pr_err("[SENSOR]: %s - get acc_int1 error\n", __func__);
 		return -ENODEV;
 	}
+
+	data->acc_int2 = of_get_named_gpio_flags(dNode,
+		"bma280-i2c,acc_int2-gpio", 0, &flags);
+	if (data->acc_int2 < 0)
+		pr_err("[SENSOR]: %s - acc_int2 error\n", __func__);
 
 	data->sda_gpio = of_get_named_gpio_flags(dNode,
 		"bma280-i2c,sda", 0, &flags);
@@ -1125,6 +1143,7 @@ static int bma280_probe(struct i2c_client *client,
 		       "reactive_wake_lock");
 
 	/* read chip id */
+	bma280_set_mode(data, BMA280_MODE_NORMAL);
 	for (i = 0; i < CHIP_ID_RETRIES; i++) {
 		ret = i2c_smbus_read_word_data(client, BMA280_CHIP_ID_REG);
 		if ((ret & 0x00ff) != BMA280_CHIP_ID) {

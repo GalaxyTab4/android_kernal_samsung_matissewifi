@@ -13,10 +13,13 @@
  * GNU General Public License for more details.
  *
  */
-#define FRAME_COUNT_202		77
+#define FRAME_COUNT		77
 #define ONE_PACKET_SIZE		70
+#define FW_VERSION			0x0202
 
-const  u8 IRDA_binary_202[] = {
+const size_t IRDA_binary_nLength = FRAME_COUNT*(64+6);
+
+const  u8 IRDA_binary[] = {
 /* Model name       : GT-N8020_LTE */
 /* Module revision  : 0x32 */
 /* Firmware version : 0x0202 */

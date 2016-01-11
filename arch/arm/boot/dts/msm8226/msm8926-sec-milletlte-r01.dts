@@ -25,7 +25,7 @@
 / {
 	model = "[MILLET-LTE-OPEN] Rev-01-MTP-v1";
 	compatible = "qcom,msm8226-mtp", "qcom,msm8226", "qcom,mtp";
-	qcom,msm-id = <0xC808FF01 1 0x10001>;
+	qcom,msm-id = <0xC800FF01 1 0x10001>;
 };
 
 /{

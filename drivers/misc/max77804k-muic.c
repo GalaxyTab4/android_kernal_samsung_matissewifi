@@ -332,10 +332,8 @@ static ssize_t max77804k_muic_show_device(struct device *dev,
 		return sprintf(buf, "OTG\n");
 	case CABLE_TYPE_TA_MUIC:
 		return sprintf(buf, "TA\n");
-#ifdef CONFIG_MUIC_MAX77804K_SUPPORT_DESKDOCK
 	case CABLE_TYPE_DESKDOCK_MUIC:
 		return sprintf(buf, "Desk Dock\n");
-#endif
 	case CABLE_TYPE_SMARTDOCK_MUIC:
 		return sprintf(buf, "Smart Dock\n");
 	case CABLE_TYPE_SMARTDOCK_TA_MUIC:
@@ -860,12 +858,7 @@ static int max77804k_muic_set_usb_path(struct max77804k_muic_info *info, int pat
 		if (ret) {
 			dev_err(info->dev, "%s: fail to set safout!\n",
 				__func__);
-#if defined CONFIG_SEC_RUBENS_PROJECT
-			//TODO : please remove comment on battery/regulator bring up
-			//return ret;
-#else
 			return ret;
-#endif
 		}
 	}
 
@@ -985,8 +978,7 @@ static int max77804k_muic_set_charging_type(struct max77804k_muic_info *info,
 	}
 	return 0;
 }
-//Handles only deskdock
-#ifdef CONFIG_MUIC_MAX77804K_SUPPORT_DESKDOCK
+
 static int max77804k_muic_handle_dock_vol_key(struct max77804k_muic_info *info,
 					     u8 status1)
 {
@@ -1114,7 +1106,6 @@ static int max77804k_muic_handle_dock_vol_key(struct max77804k_muic_info *info,
 
 	return 1;
 }
-#endif
 
 static int max77804k_muic_attach_usb_type(struct max77804k_muic_info *info,
 					 int adc)
@@ -1213,7 +1204,6 @@ static int max77804k_muic_attach_dock_type(struct max77804k_muic_info *info,
 	if (info->is_adc_open_prev == false)
 		return 0;
 	switch (adc) {
-#ifdef CONFIG_MUIC_MAX77804K_SUPPORT_DESKDOCK
 	case ADC_DESKDOCK:
 		/* Desk Dock */
 		if (info->cable_type == CABLE_TYPE_DESKDOCK_MUIC) {
@@ -1228,7 +1218,6 @@ static int max77804k_muic_attach_dock_type(struct max77804k_muic_info *info,
 		if (mdata->dock_cb)
 			mdata->dock_cb(MAX77804K_MUIC_DOCK_DESKDOCK);
 		break;
-#endif
 	case ADC_CARDOCK:
 		/* Car Dock */
 		if (info->cable_type == CABLE_TYPE_CARDOCK_MUIC) {
@@ -2057,7 +2046,6 @@ static int max77804k_muic_handle_attach(struct max77804k_muic_info *info,
 			info->cable_type = CABLE_TYPE_NONE_MUIC;
 		}
 		break;
-#ifdef CONFIG_MUIC_MAX77804K_SUPPORT_DESKDOCK
 	case CABLE_TYPE_DESKDOCK_MUIC:
 		if (adc != ADC_DESKDOCK) {
 			dev_warn(info->dev, "%s: assume deskdock detach\n", __func__);
@@ -2069,7 +2057,6 @@ static int max77804k_muic_handle_attach(struct max77804k_muic_info *info,
 				mdata->dock_cb(MAX77804K_MUIC_DOCK_DETACHED);
 		}
 		break;
-#endif
 	case CABLE_TYPE_CARDOCK_MUIC:
 		if (adc != ADC_CARDOCK) {
 			dev_warn(info->dev, "%s: assume cardock detach\n", __func__);
@@ -2416,7 +2403,6 @@ static int max77804k_muic_handle_detach(struct max77804k_muic_info *info, int ir
 		if (mdata->usb_cb && info->is_usb_ready)
 			mdata->usb_cb(USB_CABLE_DETACHED);
 		break;
-#ifdef CONFIG_MUIC_MAX77804K_SUPPORT_DESKDOCK
 	case CABLE_TYPE_DESKDOCK_MUIC:
 		dev_info(info->dev, "%s: DESKDOCK\n", __func__);
 		info->cable_type = CABLE_TYPE_NONE_MUIC;
@@ -2429,7 +2415,6 @@ static int max77804k_muic_handle_detach(struct max77804k_muic_info *info, int ir
 		if ((info->adc!=ADC_DESKDOCK) && mdata->dock_cb)
 			mdata->dock_cb(MAX77804K_MUIC_DOCK_DETACHED);
 		break;
-#endif
 	case CABLE_TYPE_CARDOCK_MUIC:
 		dev_info(info->dev, "%s: CARDOCK\n", __func__);
 		info->cable_type = CABLE_TYPE_NONE_MUIC;
@@ -2599,9 +2584,7 @@ static int max77804k_muic_filter_dev(struct max77804k_muic_info *info,
 				 chgtyp == CHGTYP_1A) {
 				switch (info->cable_type) {
 				case CABLE_TYPE_OTG_MUIC:
-#ifdef CONFIG_MUIC_MAX77804K_SUPPORT_DESKDOCK
 				case CABLE_TYPE_DESKDOCK_MUIC:
-#endif
 				case CABLE_TYPE_CARDOCK_MUIC:
 				case CABLE_TYPE_SMARTDOCK_MUIC:
 				case CABLE_TYPE_SMARTDOCK_TA_MUIC:
@@ -2646,14 +2629,13 @@ static void max77804k_muic_detect_dev(struct max77804k_muic_info *info, int irq)
 
 	dev_info(info->dev, "%s: STATUS1:0x%x, 2:0x%x\n", __func__,
 		 status[0], status[1]);
-#ifdef CONFIG_MUIC_MAX77804K_SUPPORT_DESKDOCK
+
 	if ((irq == info->irq_adc) &&
 	    max77804k_muic_handle_dock_vol_key(info, status[0])) {
 		dev_info(info->dev,
 			 "max77804k_muic_handle_dock_vol_key(irq_adc:%x)", irq);
 		return;
 	}
-#endif
 
 	wake_lock_timeout(&info->muic_wake_lock, HZ * 2);
 
@@ -3136,9 +3118,7 @@ static int __devinit max77804k_muic_probe(struct platform_device *pdev)
 		 info->irq_adc, info->irq_chgtype, info->irq_adc1k);
 
 	input->name = pdev->name;
-#ifdef CONFIG_MUIC_MAX77804K_SUPPORT_DESKDOCK
 	input->phys = "deskdock-key/input0";
-#endif
 	input->dev.parent = &pdev->dev;
 
 	input->id.bustype = BUS_HOST;

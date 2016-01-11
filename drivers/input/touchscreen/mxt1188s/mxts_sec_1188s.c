@@ -1,6 +1,5 @@
 #if TSP_SEC_FACTORY
 #include <linux/uaccess.h>
-#define tostring(x) #x
 
 static void set_default_result(struct mxt_fac_data *data)
 {
@@ -27,7 +26,7 @@ static void not_support_cmd(void *device_data)
 	set_default_result(fdata);
 	sprintf(buff, "%s", "NA");
 	set_cmd_result(fdata, buff, strnlen(buff, sizeof(buff)));
-	fdata->cmd_state = CMD_STATUS_WAITING;
+	fdata->cmd_state = CMD_STATUS_NOT_APPLICABLE;
 	dev_info(&client->dev, "%s: %s\"%s(%d)\"\n",
 		__func__, fdata->cmd, buff, strnlen(buff, sizeof(buff)));
 
@@ -208,21 +207,6 @@ static void mxt_treat_dbg_data(struct mxt_data *data,
 	bool reference_compare = true;
 #endif
 
-#if ENABLE_TOUCH_KEY
-	if((y_num == (data->pdata->touchkey[0].ynode)) &&
-					(x_num >= data->max_keys)){
-		return;
-	}
-#endif
-
-#if (USE_DUAL_X_MODE && TSP_INFORM_CHARGER)
-	if(data->charging_mode==1){
-		if(x_num == (data->fdata->num_xnode - 1)){
-			dev_dbg(&client->dev, "ignored x=%d/%d node, because TA mode,%d\n",x_num,data->fdata->num_xnode,data->charging_mode);
-			return;
-		}
-	}
-#endif
 	if (dbg_mode == MXT_DIAG_DELTA_MODE) {
 		/* read delta data */
 		mxt_read_mem(data, dbg_object->start_address + read_point,
@@ -808,40 +792,6 @@ static void get_config_ver(void *device_data)
 		__func__, buff, strnlen(buff, sizeof(buff)));
 }
 
-static void get_module_vendor(void *device_data)
-{
-	struct mxt_data *data = (struct mxt_data *)device_data;
-	struct i2c_client *client = data->client;
-	struct mxt_fac_data *fdata = data->fdata;
-	char buff[16] = {0};
-	int val;
-
-	set_default_result(fdata);
-	if (!(gpio_get_value(data->pdata->tsp_en) &&
-				gpio_get_value(data->pdata->tsp_en1))) {
-		dev_err(&client->dev, "%s: [ERROR] Touch is stopped\n",
-				__func__);
-		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
-		set_cmd_result(fdata, buff, strnlen(buff, sizeof(buff)));
-		fdata->cmd_state = CMD_STATUS_NOT_APPLICABLE;
-		return;
-	}
-	if (data->pdata->tsp_vendor1 > 0) {
-		gpio_tlmm_config(GPIO_CFG(data->pdata->tsp_vendor1, 0,
-				GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), 1);
-		val = gpio_get_value(data->pdata->tsp_vendor1);
-		dev_info(&client->dev,
-			"%s: TSP_ID: %d[%d]\n", __func__,data->pdata->tsp_vendor1, val);
-		snprintf(buff, sizeof(buff), "%s,%d", tostring(OK), val);
-		fdata->cmd_state = CMD_STATUS_OK;
-		set_cmd_result(fdata, buff, strnlen(buff, sizeof(buff)));
-		return;
-	}
-	snprintf(buff, sizeof(buff),  "%s", tostring(NG));
-	fdata->cmd_state = CMD_STATUS_FAIL;
-	set_cmd_result(fdata, buff, strnlen(buff, sizeof(buff)));
-}
-
 static void get_threshold(void *device_data)
 {
 	struct mxt_data *data = (struct mxt_data *)device_data;
@@ -1040,11 +990,6 @@ static void run_reference_read(void *device_data)
 	if(data->patch.event_cnt)
 		mxt_patch_test_event(data, 2);
 #endif
-
-	ret = mxt_write_object(data, MXT_GEN_COMMANDPROCESSOR_T6,
-		MXT_COMMAND_CALIBRATE, 1);
-	if(ret)
-		pr_err("[TSP] error sending calibration command %s\n", __func__);
 
 	ret = mxt_read_all_diagnostic_data(data,
 			MXT_DIAG_REFERENCE_MODE);
@@ -1614,7 +1559,6 @@ static struct tsp_cmd tsp_cmds[] = {
 	{TSP_CMD("get_fw_ver_ic", get_fw_ver_ic),},
 	{TSP_CMD("get_config_ver", get_config_ver),},
 	{TSP_CMD("get_threshold", get_threshold),},
-	{TSP_CMD("get_module_vendor", get_module_vendor),},
 	{TSP_CMD("module_off_master", module_off_master),},
 	{TSP_CMD("module_on_master", module_on_master),},
 	{TSP_CMD("module_off_slave", not_support_cmd),},
@@ -2605,11 +2549,6 @@ static int mxt_init_factory(struct mxt_data *data)
 	if (error) {
 		dev_err(dev, "Failed to create touchscreen sysfs group\n");
 		goto err_create_group;
-	}
-	error = sysfs_create_link(&data->fdata->fac_dev_ts->kobj,
-		&data->input_dev->dev.kobj, "input");
-	if (error < 0) {
-		dev_err(dev, "Failed to create input symbolic link\n");
 	}
 
 	return 0;

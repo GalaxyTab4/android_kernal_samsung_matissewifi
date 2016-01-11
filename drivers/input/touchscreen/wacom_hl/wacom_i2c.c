@@ -289,7 +289,6 @@ static int wacom_i2c_input_open(struct input_dev *dev)
 #endif
 
 	wacom_power_on(wac_i2c);
-	wac_i2c->enabled = true;
 
 	return ret;
 }
@@ -301,7 +300,6 @@ static void wacom_i2c_input_close(struct input_dev *dev)
 	dev_info(&wac_i2c->client->dev, "%s\n", __func__);
 
 	wacom_power_off(wac_i2c);
-	wac_i2c->enabled = false;	
 }
 
 
@@ -1055,10 +1053,8 @@ static ssize_t epen_saving_mode_store(struct device *dev,
 	if (wac_i2c->battery_saving_mode) {
 		if (wac_i2c->pen_insert)
 			wacom_power_off(wac_i2c);
-	} else {
-	 	if(wac_i2c->enabled)
+	} else
 		wacom_power_on(wac_i2c);
-	}
 	return count;
 }
 #endif
@@ -1262,8 +1258,6 @@ static int g_gpio_fwe1;
 static int g_gpio_irq;
 static int g_gpio_insert_pen;
 static int g_gpio_pdct;
-static int g_gpio_insert_pen_pull;
-
 
 int wacom_power(bool on)
 {
@@ -1382,11 +1376,8 @@ void wacom_init_gpio(struct wacom_g5_platform_data *pdata)
 		printk(KERN_INFO "epen: %s: unable to gpio [%d], r:%d\n", __func__, pdata->gpio_pen_insert, ret);
 		return;
 	}		
-	if(g_gpio_insert_pen_pull){
 	gpio_tlmm_config(GPIO_CFG(pdata->gpio_pen_insert, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA), 1);
-	}else{
-		gpio_tlmm_config(GPIO_CFG(pdata->gpio_pen_insert, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), 1);
-	}
+
 	
 }
 static int wacom_parse_dt(struct device *dev, struct wacom_g5_platform_data *pdata)
@@ -1396,13 +1387,14 @@ static int wacom_parse_dt(struct device *dev, struct wacom_g5_platform_data *pda
 
 	pdata->gpio_ldo_en = of_get_named_gpio(np, "wacom,vdd_en-gpio", 0);
 	pdata->gpio_irq = of_get_named_gpio(np, "wacom,irq-gpio", 0);
-	g_gpio_insert_pen_pull = of_property_read_bool(np, "wacom,insert-pull-up");
+#if defined(CONFIG_SEC_LOCALE_KOR_FRESCO)
 	pdata->gpio_reset_n = of_get_named_gpio(np, "wacom,reset_n-gpio", 0);	
 	pdata->gpio_fwe1 = of_get_named_gpio(np, "wacom,pen_fwe1-gpio", 0);
 	pdata->gpio_pen_insert = of_get_named_gpio(np, "wacom,sense-gpio", 0);
 	pdata->gpio_pendct = of_get_named_gpio(np, "wacom,pen_pdct-gpio", 0);
+#endif
 	
-	printk(KERN_INFO "epen: %s: en_vdd:%d, irq:%d pull:%d \n",	__func__, pdata->gpio_ldo_en, pdata->gpio_irq, g_gpio_insert_pen_pull);
+	printk(KERN_INFO "epen: %s: en_vdd:%d, irq:%d \n",	__func__, pdata->gpio_ldo_en, pdata->gpio_irq);
 
 	g_gpio_ldo_en = pdata->gpio_ldo_en;
 	g_gpio_irq = pdata->gpio_irq;	
@@ -1436,6 +1428,15 @@ static int wacom_i2c_probe(struct i2c_client *client, const struct i2c_device_id
 		printk(KERN_ERR "epen: pdata err = ENOMEM!\n");
 		return -ENOMEM;
 	}
+
+#if !defined(CONFIG_SEC_LOCALE_KOR_FRESCO)
+	pdata->gpio_ldo_en = GPIO_PEN_LDO_EN;
+	pdata->gpio_reset_n = GPIO_PEN_RESET_N_18V;
+	pdata->gpio_fwe1 = GPIO_PEN_FWE1_18V;
+	pdata->gpio_irq = GPIO_PEN_IRQ_18V;
+	pdata->gpio_pendct = GPIO_PEN_PDCT_18V;
+	pdata->gpio_pen_insert = GPIO_WACOM_SENSE;
+#endif
 
 	pdata->x_invert = WACOM_X_INVERT;
 	pdata->y_invert = WACOM_Y_INVERT;
@@ -1545,7 +1546,7 @@ static int wacom_i2c_probe(struct i2c_client *client, const struct i2c_device_id
 
 	/* Power on */
 	wac_i2c->wac_pdata->resume_platform_hw();
-	msleep(60); // for booting time,  msleep(200);
+	msleep(200);
 	wac_i2c->power_enable = true;
 	wac_i2c->pwr_flag = true;
 
@@ -1581,9 +1582,7 @@ static int wacom_i2c_probe(struct i2c_client *client, const struct i2c_device_id
 #endif
 	INIT_WORK(&wac_i2c->update_work, wacom_i2c_update_work);
 	/*init wacom booster*/
-#if defined(WACOM_BOOSTER_DVFS)	
-	wacom_init_dvfs(wac_i2c);
-#elif defined(WACOM_BOOSTER)
+#ifdef WACOM_BOOSTER
 	wacom_init_dvfs(wac_i2c);
 	wac_i2c->boost_level = WACOM_BOOSTER_LEVEL2;
 #endif

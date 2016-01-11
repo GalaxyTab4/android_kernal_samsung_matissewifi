@@ -34,123 +34,7 @@
 #define CONFIG_SAMSUNG_KERNEL_DEBUG_USER
 #endif
 
-#if defined(WACOM_BOOSTER_DVFS)
-extern int useing_in_tsp_or_epen;
-void wacom_change_dvfs_lock(struct work_struct *work)
-{
-	struct wacom_i2c *info = container_of(work,struct wacom_i2c,work_dvfs_chg.work);
-
-	int retval = 0;
-	mutex_lock(&info->dvfs_lock);
-
-	if (info->dvfs_boost_mode == DVFS_STAGE_DUAL) {
-        if (info->stay_awake) {
-                dev_info(&info->client->dev, "%s: do fw update, do not change cpu frequency.\n", __func__);
-        } else {
-                retval = set_freq_limit(DVFS_TOUCH_ID, MIN_TOUCH_LIMIT_SECOND);
-                info->dvfs_freq = MIN_TOUCH_LIMIT_SECOND;
-		}
-    } else if (info->dvfs_boost_mode == DVFS_STAGE_SINGLE || info->dvfs_boost_mode == DVFS_STAGE_TRIPLE) {
-            retval = set_freq_limit(DVFS_TOUCH_ID, -1);
-            info->dvfs_freq = -1;
-    }
-
-    if (retval < 0)
-            dev_err(&info->client->dev,"%s: booster change failed(%d).\n",__func__, retval);
-	mutex_unlock(&info->dvfs_lock);
-}
-
-void wacom_set_dvfs_off(struct work_struct *work)
-{
-	struct wacom_i2c *info = container_of(work,struct wacom_i2c,work_dvfs_off.work);
-	int retval;
-
-	if (info->stay_awake) {
-		dev_info(&info->client->dev, "%s: do fw update, do not change cpu frequency.\n", __func__);
-    } else {
-        mutex_lock(&info->dvfs_lock);
-		if((useing_in_tsp_or_epen & 0x02)== 0x02){
-			useing_in_tsp_or_epen = 0x02;
-			retval = 0;
-		}else{
-			retval = set_freq_limit(DVFS_TOUCH_ID, -1);
-			useing_in_tsp_or_epen = 0;
-		}
-        info->dvfs_freq = -1;
-		dev_info(&info->client->dev,"%s :set freq -1\n",__func__);
-
-        if (retval < 0)dev_err(&info->client->dev,"%s: booster stop failed(%d).\n", __func__, retval);
-        info->dvfs_lock_status = false;
-
-        mutex_unlock(&info->dvfs_lock);
-    }
-}
-
-void wacom_set_dvfs_lock(struct wacom_i2c *info, uint32_t on)
-{
-
-	int ret = 0;
-
-	if (info->dvfs_boost_mode == DVFS_STAGE_NONE) {
-        dev_dbg(&info->client->dev,"%s: DVFS stage is none(%d)\n", __func__, info->dvfs_boost_mode);
-        return;
-    }
-
-    mutex_lock(&info->dvfs_lock);
-    if (on == 0) {
-        if (info->dvfs_lock_status)
-			schedule_delayed_work(&info->work_dvfs_off,msecs_to_jiffies(WACOM_BOOSTER_OFF_TIME));
-    } else if (on > 0) {
-        cancel_delayed_work(&info->work_dvfs_off);
-
-        if ((!info->dvfs_lock_status) || (info->dvfs_old_stauts < on)) {
-			useing_in_tsp_or_epen = useing_in_tsp_or_epen | 0x1;
-
-			if (info->dvfs_boost_mode == DVFS_STAGE_SINGLE){
-				ret = set_freq_limit(DVFS_TOUCH_ID, MIN_TOUCH_LIMIT_SECOND);
-				info->dvfs_freq = MIN_TOUCH_LIMIT_SECOND;
-	            if (ret < 0)
-					dev_err(&info->client->dev,"%s: cpu first lock failed(%d)\n", __func__, ret);
-			}else {
-	            cancel_delayed_work(&info->work_dvfs_chg);
-	            if (info->dvfs_freq != MIN_TOUCH_LIMIT) {
-					if (info->dvfs_boost_mode == DVFS_STAGE_TRIPLE)
-	                    ret = set_freq_limit(DVFS_TOUCH_ID, MIN_TOUCH_LIMIT_SECOND);
-	                else
-	                    ret = set_freq_limit(DVFS_TOUCH_ID, MIN_TOUCH_LIMIT);
-	                info->dvfs_freq = MIN_TOUCH_LIMIT;
-
-	                if (ret < 0)
-					dev_err(&info->client->dev,"%s: cpu first lock failed(%d)\n", __func__, ret);
-	            }
-	            schedule_delayed_work(&info->work_dvfs_chg, msecs_to_jiffies(WACOM_BOOSTER_CHG_TIME));
-			}
-            info->dvfs_lock_status = true;
-        }
-    } else if (on < 0) {
-        if (info->dvfs_lock_status) {
-            cancel_delayed_work(&info->work_dvfs_off);
-            cancel_delayed_work(&info->work_dvfs_chg);
-            schedule_work(&info->work_dvfs_off.work);
-        }
-    }
-	info->dvfs_old_stauts = on;
-	mutex_unlock(&info->dvfs_lock);
-}
-
-void wacom_init_dvfs(struct wacom_i2c *info)
-{
-	mutex_init(&info->dvfs_lock);
-	info->dvfs_boost_mode = DVFS_STAGE_SINGLE; // DVFS_STAGE_DUAL;
-
-	INIT_DELAYED_WORK(&info->work_dvfs_off, wacom_set_dvfs_off);
-	INIT_DELAYED_WORK(&info->work_dvfs_chg, wacom_change_dvfs_lock);
-
-	info->dvfs_lock_status = false;
-}
-
-#elif defined(WACOM_BOOSTER)
-
+#ifdef WACOM_BOOSTER
 #define set_qos(req, pm_qos_class, value) { \
 	if (pm_qos_request_active(req)) \
 	pm_qos_update_request(req, value); \
@@ -286,7 +170,7 @@ void forced_release(struct wacom_i2c *wac_i2c)
 	wac_i2c->side_pressed = 0;
 	/*wac_i2c->pen_pdct = PDCT_NOSIGNAL;*/
 
-#if defined(WACOM_BOOSTER) || defined(WACOM_BOOSTER_DVFS)
+#ifdef WACOM_BOOSTER
 	if (wac_i2c->last_x == 0 && wac_i2c->last_y == 0)
 		wacom_set_dvfs_lock(wac_i2c, 0);
 #endif
@@ -881,8 +765,7 @@ static int keycode[] = {
 };
 void wacom_i2c_softkey(struct wacom_i2c *wac_i2c, s16 key, s16 pressed)
 {
-
-#if defined(WACOM_BOOSTER) || defined(WACOM_BOOSTER_DVFS)
+#ifdef WACOM_BOOSTER
 	wacom_set_dvfs_lock(wac_i2c, pressed);
 #endif
 		input_report_key(wac_i2c->input_dev,
@@ -989,8 +872,7 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 				return 0;
 			}
 #endif
-
-#if defined(WACOM_BOOSTER) || defined(WACOM_BOOSTER_DVFS)
+#ifdef WACOM_BOOSTER
 			wacom_set_dvfs_lock(wac_i2c, 1);
 #endif
 #ifdef CONFIG_INPUT_BOOSTER
@@ -1173,8 +1055,7 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 		wac_i2c->side_pressed = 0;
 		wac_i2c->last_x = 0;
 		wac_i2c->last_y = 0;
-
-#if defined(WACOM_BOOSTER) || defined(WACOM_BOOSTER_DVFS)
+#ifdef WACOM_BOOSTER
 		wacom_set_dvfs_lock(wac_i2c, 0);
 #endif
 	}

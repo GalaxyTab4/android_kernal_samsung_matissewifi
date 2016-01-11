@@ -33,10 +33,6 @@
 static char klog_buf[256];
 #endif
 
-#ifdef CONFIG_SEC_BSP
-#include <mach/sec_bsp.h>
-#endif
-
 #ifndef CONFIG_LOGCAT_SIZE
 #define CONFIG_LOGCAT_SIZE 256
 #endif
@@ -452,10 +448,6 @@ static ssize_t do_write_log_from_user(struct logger_log *log,
 		else
 			memcpy(klog_buf, log->buffer + log->w_off, 255);
 		klog_buf[255] = 0;
-#ifdef CONFIG_SEC_BSP
-		if (strncmp(klog_buf, "!@Boot", 6) == 0)
-			sec_boot_stat_add(klog_buf);
-#endif
 	}
 #endif
 
@@ -760,7 +752,7 @@ static struct logger_log VAR = { \
 };
 
 #ifdef CONFIG_SEC_LOGGER_BUFFER_EXPANSION
-DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, CONFIG_LOGCAT_SIZE*1024*2*CONFIG_SEC_LOGGER_BUFFER_EXPANSION_SIZE) // 2MB
+DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, CONFIG_LOGCAT_SIZE*1024*4)	// 2MB
 #else
 DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, CONFIG_LOGCAT_SIZE*1024*2)	// 1MB
 #endif

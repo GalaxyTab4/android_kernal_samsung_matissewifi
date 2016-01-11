@@ -90,19 +90,12 @@ struct debug_mdp *debug_mdp;
 #ifdef CONFIG_SEC_DEBUG_SCHED_LOG
 extern struct sec_debug_log *secdbg_log;
 extern struct sec_debug_subsys_data_krait *secdbg_krait;
-extern struct _dlogdebug __start___dlog[];
-extern struct _dlogdebug __stop___dlog[];
-extern struct mdss_data_type *mdss_res;
 #endif
 static spinlock_t xlock;
 extern struct msm_mdp_interface mdp5;
-static int sec_debug_level = 1;
+static int sec_debug_level;
 #endif
-#define DLOG_BUFFER_SIZE 2000
-#define DLOG_BUFFER_SIZE_SHIP 200
-#define REGISTER_LOG_LEN 110
-#define EVENT_DESC_LEN 10
-#define CLOCK_DUMP_LEN 2
+
 
 #if defined(CONFIG_ARCH_MSM8974)
 #define CHIP_GPIO_COUNT_8974  146
@@ -142,14 +135,53 @@ int check_duplicate_event(u32 *event_buff, u32 address) {
 	return 0;
 }
 
+void dump_event_code(void){
+	static u32 *dump_buff = NULL;
+	static u32 *event_buff = NULL;
+	int log_buff_first = debug_mdp->log_buff.first;
+	int log_buff_last = debug_mdp->log_buff.last;
+	int index = 0;
+	struct dump_event *dump_event = NULL;
+
+	if( debug_mdp->event_desc.len <= 0) return;
+	
+	if((debug_mdp !=NULL) && (dump_buff == NULL)) {
+		dump_buff=  (u32 *)((char *)debug_mdp + (sizeof(struct debug_mdp) + debug_mdp->log_buff.offset));		
+	}
+
+	/* null pointer exception not possible as debug_mdp would be assigned before this function call, not a cpp violation */
+	if((debug_mdp !=NULL) && (event_buff == NULL)) {
+		event_buff=  (u32 *)((char *)debug_mdp + (sizeof(struct debug_mdp) + debug_mdp->event_desc.offset));		
+	}
+	
+	pr_debug("[Dlogger] debug_mdp: %p, log_buff: %p, event_buf: %p-%p\n", debug_mdp, dump_buff, event_buff,event_buff+debug_mdp->event_desc.len);
+	dump_event = (struct dump_event *)event_buff;
+	/*Reset previous entries(tempory, TODO: Pls provide optimize solution )*/
+	memset(event_buff,0x0,debug_mdp->event_desc.len);
+	while((index < debug_mdp->event_desc.len/sizeof(struct dump_event)) && log_buff_first != log_buff_last) {
+			if(dump_buff[log_buff_first] == 0xDEADBABE) {
+				if (!check_duplicate_event(event_buff, dump_buff[log_buff_first+1])) {
+					dump_event[index].ret_address = dump_buff[log_buff_first+1];				
+					snprintf(dump_event[index].func_name, 60, "%pS", (void *)(dump_buff[log_buff_first+1]|0x80000000));			
+						index++;
+					pr_debug("[DLOG]dump event info write: %p\n",&dump_event[index]);
+				}
+			}
+				
+		log_buff_first++;
+		log_buff_first %= (debug_mdp->log_buff.len/4);
+		
+	}
+	debug_mdp->event_desc.last = index;
+}
+	
 void inc_put(u32 *buff,u32 l){
 
 	buff[debug_mdp->log_buff.last] = l;
 	debug_mdp->log_buff.last++;
 	debug_mdp->log_buff.last %=  (debug_mdp->log_buff.len/sizeof(u32));
 	if(debug_mdp->log_buff.last == debug_mdp->log_buff.first) {
-						int count  = buff[debug_mdp->log_buff.first] &0x1F;
-						debug_mdp->log_buff.first += count;  
+						debug_mdp->log_buff.first++;
 						debug_mdp->log_buff.first %= (debug_mdp->log_buff.len/sizeof(u32));
 	}
 	pr_debug("[DDEBUGGER] buff:%p, first:%d, last:%d, Val: %x\n",buff,debug_mdp->log_buff.first,debug_mdp->log_buff.last,(u32)l);
@@ -174,6 +206,7 @@ static struct dclock clock_list[] = {
 	{"mdss_pclk0_clk",HWIO_MMSS_MDSS_PCLK0_CBCR_ADDR,CLK_TEST_MDSS_PCLK0_CLK,0},
 	{"mdss_pclk1_clk",HWIO_MMSS_MDSS_PCLK1_CBCR_ADDR,CLK_TEST_MDSS_PCLK1_CLK,0},
 	{"mdss_vsync_clk",HWIO_MMSS_MDSS_VSYNC_CBCR_ADDR,CLK_TEST_MDSS_VSYNC_CLK,0},
+	{"mmss_misc_ahb_clk",HWIO_MMSS_MISC_AHB_CBCR_ADDR,CLK_TEST_MMSS_MISC_AHB_CLK,0},
 
 };
 #elif defined(CONFIG_ARCH_MSM8226)
@@ -186,6 +219,7 @@ static struct dclock clock_list[] = {
 	{"mdss_mdp_lut_clk",HWIO_MMSS_MDSS_MDP_LUT_CBCR_ADDR,CLK_TEST_MDSS_MDP_LUT_CLK,0},
 	{"mdss_pclk0_clk",HWIO_MMSS_MDSS_PCLK0_CBCR_ADDR,CLK_TEST_MDSS_PCLK0_CLK,0},
 	{"mdss_vsync_clk",HWIO_MMSS_MDSS_VSYNC_CBCR_ADDR,CLK_TEST_MDSS_VSYNC_CLK,0},
+	{"mmss_misc_ahb_clk",HWIO_MMSS_MISC_AHB_CBCR_ADDR,CLK_TEST_MMSS_MISC_AHB_CLK,0},
 };
 
 #endif
@@ -344,25 +378,29 @@ static long read_clock(u32 clk_test,u32 clk_reg){
 
 static int init_clock_va(void){
 	int i = 0;
-	u32 clock_base_phy = 0xfd8c2300;
-	u32 clock_base_virt  = (u32)ioremap(0xfd8c2300,0xFF);
-	if(!clock_base_virt)
-			pr_err("Error Mapping Clock adress for %s",clock_list[i].name);
-
 	for(;i < sizeof(clock_list)/sizeof(struct dclock);i++){
 		pr_debug("Mapping: clk: %s addr: %x\n",clock_list[i].name,clock_list[i].reg_addr);
 #ifdef __KERNEL__
-		if((clock_list[i].reg_addr - clock_base_phy) < 0) 
-			pr_err("Check clock base @@@@@@@@@@@@@!!!!!!!!!!!!!!!!\n");
-		else
-			clock_list[i].vreg_addr = clock_base_virt + (clock_list[i].reg_addr - clock_base_phy);
-
+		clock_list[i].vreg_addr = (u32)ioremap(clock_list[i].reg_addr,4);
+		if(!clock_list[i].vreg_addr) 
+			pr_err("Error Mapping Clock adress for %s",clock_list[i].name);
 #else
 		clock_list[i].vreg_addr = clock_list[i].reg_addr;
 #endif
 	}
 	for(i = 1; i < sizeof(mdss_reg_desc)/sizeof(struct reg_desc) ; i++){
 		mdss_reg_desc[i].vaddr = (u32)ioremap(mdss_reg_desc[i].base,mdss_reg_desc[i].len*4);
+	}
+	for(i = 0; i < sizeof(mdp_reg_info)/sizeof(u32); i++){
+		int len = 0;
+		int base;
+		len = mdp_reg_info[i] & 0xfff00000;
+		len = len >> 20;
+		len += 1;
+		base = mdp_reg_info[i] & 0x000fffff;
+		base = base | mdss_reg_desc[0].base;
+		mdp_reg_vaddr[i] = (u32)ioremap(base,len*4);
+		
 	}
 
 	return 0;
@@ -453,6 +491,7 @@ void klog(void)
 
 	
 	pr_debug("KK: -----------> Inside %s",__func__);
+
 	
 #ifdef __KERNEL__
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
@@ -503,13 +542,12 @@ if(mdp_reg_dump_en){
 		len += 1;
 		mdp_reg_count += len;
 		base = mdp_reg_info[i] & 0x000fffff;
-
+		base = base | mdss_reg_desc[0].base;
 #if defined(__KERNEL__)
-		if(fill_reg_log(buff, (u32) mdss_res->mdp_base +base, len*4))
+		if(fill_reg_log(buff, mdp_reg_vaddr[i], len*4))
 			pr_info("failed to dump lcd regs at %x ----------> KK\n",base);
 
 #else
-			base = base | mdss_reg_desc[0].base;
 			if(fill_reg_log(buff, base, len*4))
 			pr_info("failed to dump lcd regs at %x ----------> KK\n",base);
 #endif
@@ -527,7 +565,7 @@ if(mdp_reg_dump_en){
 	pr_debug("total mdp regs: %d\n",mdp_reg_count);
 }
 
-void dlog(struct _dlogdebug *desc, ...)
+void dlog(u32 eventid, ...)
 {	
 	
 	
@@ -535,15 +573,16 @@ void dlog(struct _dlogdebug *desc, ...)
 
 	static u32 *buff = NULL;
 	unsigned long flags;
-	int ev_idx = desc - __start___dlog;
-	int para_count = 0;
-	int temp_main_idx = 0 ;
+	int ev_id_mask = 0;
 #ifdef __KERNEL__
 	ktime_t time;
 	if(!debug_mdp) return;
 
 	spin_lock_irqsave(&xlock, flags);
-
+	if(eventid == 0xBBBB)
+		ev_id_mask = 0x7FFFFFFF;
+	else
+		ev_id_mask = 0xFFFFFFFF;
 	if(read_ongoing) {
 		spin_unlock_irqrestore(&xlock, flags);
 		return;
@@ -561,12 +600,14 @@ void dlog(struct _dlogdebug *desc, ...)
 		pr_info("Debug Module Not Initialized\n");	
 		return;
 	}
-	//Store the reference of 32bit header
-	temp_main_idx = debug_mdp->log_buff.last;
-	inc_put(buff,(current->pid<<16)|(ev_idx<<5));
+	
+	
+	inc_put(buff,0xDEADBABE);
+	inc_put(buff,(u32) __builtin_return_address(0) & ev_id_mask);
 #ifdef __KERNEL__	
 	time = ktime_get();
 	inc_put(buff,(u32)ktime_to_us(time));
+	inc_put(buff,(u32)current->pid);
 #else
 	time = current_time();
 	inc_put(buff,(u32)time);
@@ -574,21 +615,16 @@ void dlog(struct _dlogdebug *desc, ...)
 #endif
 
 	
-	va_start(argp,(u32) desc);
+	va_start(argp, eventid);
 	do{
 		u32 l = va_arg(argp, u32);
 	//	pr_info("[DLOG],%pS: %x\n",__builtin_return_address(0),l);
 		if(l==0xBABEBABE) 
 			break;
 		inc_put(buff,l);
-		para_count++;
 	}while(1);
 	va_end(argp);
-
-	 para_count += 2;// 1 for main indx, 1 for time
-
-	 //Put the length
-	 buff[temp_main_idx] = buff[temp_main_idx] | (para_count & 0x1F); //5 bits for length
+	 
 #ifdef __KERNEL__ 
 	spin_unlock_irqrestore(&xlock, flags);
 #endif
@@ -623,6 +659,7 @@ static enum  {	DLOG_BUFFER_READING,	KLOG_BUFFER_READING,	SECLOG_BUFFER_READING, 
 	int ret = 0;
 	
 	if(*f_pos == 0) {
+		dump_event_code();
 
 		pr_info("===DLogger Header=====\n");
 		pr_info(" DUMP SIZE: %u, read: %lu\n",debug_mdp->size,read_byte);
@@ -660,6 +697,10 @@ static enum  {	DLOG_BUFFER_READING,	KLOG_BUFFER_READING,	SECLOG_BUFFER_READING, 
 #ifdef __KERNEL__
 					spin_lock_irqsave(&xlock, flags);
 					read_ongoing = 0;
+					debug_mdp->log_buff.first = 0;
+					debug_mdp->log_buff.last = 0;
+					debug_mdp->event_desc.first = 0;
+					debug_mdp->event_desc.last = 0;
 					debug_mdp->reg_log.first = 0;
 					debug_mdp->reg_log.last = 0;
 					debug_mdp->clock_state.first = 0;
@@ -758,44 +799,6 @@ static enum  {	DLOG_BUFFER_READING,	KLOG_BUFFER_READING,	SECLOG_BUFFER_READING, 
 	 return 1;
  }
  
- /* Get the size of description section needed */
- static int get_desc_size(void){
-			int len = __stop___dlog - __start___dlog;
-			int i = 0;
-			int str_len = 0;
-
-			for(; i < len; i++) {
-				struct _dlogdebug *ptr = __start___dlog + i;
-				str_len += strlen(ptr->filename) + 1;
-				str_len += strlen(ptr->format) + 1;
-				str_len += strlen(ptr->function) + 1;
-				str_len += 4; //flags + lineno
-
-			}
-		return str_len;
- }
-
- /* Initialize event descriptor section */
- static void init_event_desc(char *buff,int length){
-		int len = __stop___dlog - __start___dlog;
-		int i = 0;
-		int str_len = 0;
-
-		memset(buff,0x0,length);
-		for(; (i < len && str_len < length); i++) {
-			struct _dlogdebug *ptr = __start___dlog + i;
-			int *line_ptr = 0;
-			str_len += (snprintf(buff+str_len,length-str_len,"%s", ptr->filename) + 1);
-			str_len += (snprintf(buff+str_len,length-str_len,"%s", ptr->format) + 1);
-			str_len += (snprintf(buff+str_len,length-str_len,"%s", ptr->function) + 1);
-			line_ptr  = (int *) (buff + str_len);
-			*line_ptr = ptr->lineno | ptr->flags<<24;
-			str_len += 4; //flags + lineno
-			if(str_len >= length) break;
-		}
-
- }
-
  int dlog_sec_get_debug_level(void) {
 		return sec_debug_level;
  }
@@ -807,25 +810,9 @@ static enum  {	DLOG_BUFFER_READING,	KLOG_BUFFER_READING,	SECLOG_BUFFER_READING, 
  int  mdss_debug_init(void) {
 #endif
 		
-		u32 log_buff_len = DLOG_BUFFER_SIZE_SHIP*1024 - sizeof(struct debug_mdp);
-		u32 event_desc_len = 0;
-		u32 reg_log_len = 0;
-		u32 clock_state_len = 0;
+		u32 log_buff_len = 500*1024 - sizeof(struct debug_mdp);
 		struct dentry *dent = debugfs_create_dir("dlog", NULL);
-
-#if defined(CONFIG_SEC_DEBUG)
-		sec_debug_level = sec_debug_is_enabled();
-#endif
-		
-		if(sec_debug_level){
-			log_buff_len = DLOG_BUFFER_SIZE*1024;
-			event_desc_len = get_desc_size();
-			reg_log_len = REGISTER_LOG_LEN*1024;
-			clock_state_len = CLOCK_DUMP_LEN*1024;
-		}
-		
-		dump_size = log_buff_len + event_desc_len+ reg_log_len \
-			 +clock_state_len+ sizeof(struct debug_mdp);
+		dump_size = log_buff_len + sizeof(struct debug_mdp);
 #ifdef __KERNEL__
 		if(__debug_mdp_phys){
 			debug_mdp = ioremap_nocache(__debug_mdp_phys,CARVEOUT_MEM_SIZE);
@@ -843,6 +830,8 @@ static enum  {	DLOG_BUFFER_READING,	KLOG_BUFFER_READING,	SECLOG_BUFFER_READING, 
 		//debug_mdp->log_buff.offset = 0;
 		
 		pr_info(KERN_INFO "MDP debug init:debug_mdp: %p \n",debug_mdp);
+
+
 #else
 		debug_mdp = __debug_mdp_phys;
 
@@ -850,9 +839,22 @@ static enum  {	DLOG_BUFFER_READING,	KLOG_BUFFER_READING,	SECLOG_BUFFER_READING, 
 
 #endif
 		if(!__debug_mdp_phys || (__debug_mdp_phys == (u32)debug_mdp)){
-			/* Initialize buffer header */
 			debug_mdp->log_buff.len = log_buff_len; 
-
+			
+#if defined(DLOG_USER_VARIANT)
+	#if defined(CONFIG_SEC_DEBUG)
+					sec_debug_level = sec_debug_is_enabled();
+					if(sec_debug_level) 
+	#else
+					if(1)
+	#endif
+#endif
+{
+			u32 event_desc_len = 10*1024;
+			u32 reg_log_len = 10*11*1024;
+			u32 clock_state_len = 2*1024;
+			dump_size =  dump_size + event_desc_len + reg_log_len  \
+					+ clock_state_len ;
 			debug_mdp->event_desc.offset = debug_mdp->log_buff.offset + debug_mdp->log_buff.len;
 			debug_mdp->event_desc.len = event_desc_len;   
 			
@@ -861,13 +863,17 @@ static enum  {	DLOG_BUFFER_READING,	KLOG_BUFFER_READING,	SECLOG_BUFFER_READING, 
 
 			debug_mdp->clock_state.offset = debug_mdp->reg_log.offset + debug_mdp->reg_log.len;
 			debug_mdp->clock_state.len = clock_state_len;
+		
+			if (debugfs_create_file("reg_dump", 0644, dent, 0, &reg_fops)
+					== NULL) {
+				printk(KERN_ERR "%s(%d): debugfs_create_file: debug fail\n",
+					__FILE__, __LINE__);
+				return -1;
+			}
+}
 			debug_mdp->size = dump_size;
-			pr_info("size:%d",sizeof(debug_mdp->size));
-				
+			pr_info("size:%d",sizeof(debug_mdp));
 			strncpy(debug_mdp->marker,"*#$$_START_OF_MDP_DEBUG_DUMP##$", sizeof("*#$$_START_OF_MDP_DEBUG_DUMP##$"));
-			if(debug_mdp !=NULL)
-				init_event_desc((char *)debug_mdp + (sizeof(struct debug_mdp) + debug_mdp->event_desc.offset), debug_mdp->event_desc.len);		
-
 		}else {
 			pr_info("===DLogger Header=====\n");
 			pr_info(" DUMP SIZE: %u\n",debug_mdp->size);
@@ -886,30 +892,23 @@ static enum  {	DLOG_BUFFER_READING,	KLOG_BUFFER_READING,	SECLOG_BUFFER_READING, 
 						debug_mdp->clock_state.offset, debug_mdp->clock_state.len);
 		}
 		
-#ifdef __KERNEL__	
-		spin_lock_init(&xlock);
-
-{
-	if(sec_debug_level) {
+#ifdef __KERNEL__
 		init_clock_va();	
 		vHWIO_GCC_DEBUG_CLK_CTL_ADDR = ioremap((0xfc401880),4);
 		vHWIO_MMSS_DEBUG_CLK_CTL_ADDR = ioremap(0xfd8c0900,4);
 		vHWIO_GCC_CLOCK_FRQ_MEASURE_STATUS_ADDR = ioremap(0xfc401888,4);
 		vHWIO_GCC_CLOCK_FRQ_MEASURE_CTL_ADDR = ioremap(0xfc401884,4);
 		vHWIO_GCC_XO_DIV4_CBCR_ADDR = ioremap(0xfc4010c8,4);
-		if (debugfs_create_file("reg_dump", 0644, dent, 0, &reg_fops)
-								== NULL) {
-							printk(KERN_ERR "%s(%d): debugfs_create_file: debug fail\n",
-								__FILE__, __LINE__);
-							return -1;
-		}
-		pr_info("Init Section: %p",__start___dlog);
-	}
+
+		spin_lock_init(&xlock);
+
+{
+
 	if (debugfs_create_file("dlogger", 0644, dent, 0, &dlog_fops)
-		== NULL) {
-	printk(KERN_ERR "%s(%d): debugfs_create_file: debug fail\n",
-		__FILE__, __LINE__);
-	return -1;
+			== NULL) {
+		printk(KERN_ERR "%s(%d): debugfs_create_file: debug fail\n",
+			__FILE__, __LINE__);
+		return -1;
 	}
 }
 #endif

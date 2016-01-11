@@ -21,15 +21,13 @@
  *
  */
 
+#define MT04
+
 #include "cyttsp5_regs.h"
 
 #include <linux/i2c.h>
 
 #define CY_I2C_DATA_SIZE  (2 * 256)
-
-#ifdef CONFIG_SAMSUNG_LPM_MODE
-extern int poweroff_charging;
-#endif
 
 static int cyttsp5_i2c_read_default(struct device *dev, void *buf, int size)
 {
@@ -112,39 +110,32 @@ static struct cyttsp5_bus_ops cyttsp5_i2c_bus_ops = {
 };
 
 static struct of_device_id cyttsp5_i2c_of_match[] = {
+#ifdef MT04
+	{ .compatible = "tsp,millet-ts",},
+#else
 	{ .compatible = "cy,cyttsp5_i2c_adapter", },
+#endif
 	{ }
 };
 MODULE_DEVICE_TABLE(of, cyttsp5_i2c_of_match);
-
-#if defined(CONFIG_FB_MSM8x26_MDSS_CHECK_LCD_CONNECTION)
-extern int get_lcd_attached(void);
-#endif
 
 static int cyttsp5_i2c_probe(struct i2c_client *client,
 	const struct i2c_device_id *i2c_id)
 {
 	struct device *dev = &client->dev;
-#ifdef CONFIG_TOUCHSCREEN_CYTTSP5_DEVICETREE_SUPPORT	
-	const struct of_device_id *match;
-#endif
-
-#if defined(CONFIG_FB_MSM8x26_MDSS_CHECK_LCD_CONNECTION)
-	if (get_lcd_attached() == 0) {
-		dev_err(&client->dev, "%s : get_lcd_attached()=0 \n", __func__);
-		return -EIO;
-	}
-#endif
-
+	
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(dev, "I2C functionality not Supported\n");
 		return -EIO;
 	}
 
-#ifdef CONFIG_TOUCHSCREEN_CYTTSP5_DEVICETREE_SUPPORT
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_DEVICETREE_SUPPORT
+	{
+	const struct of_device_id *match;
 	match = of_match_device(of_match_ptr(cyttsp5_i2c_of_match), dev);
 	if (match)
 		cyttsp5_devtree_create_and_get_pdata(dev);
+	}
 #endif
 
 	return cyttsp5_probe(&cyttsp5_i2c_bus_ops, &client->dev, client->irq,
@@ -153,34 +144,21 @@ static int cyttsp5_i2c_probe(struct i2c_client *client,
 
 static int cyttsp5_i2c_remove(struct i2c_client *client)
 {
-#ifdef CONFIG_TOUCHSCREEN_CYTTSP5_DEVICETREE_SUPPORT
-	struct device *dev = &client->dev;
-	const struct of_device_id *match;
-#endif
+//	struct device *dev = &client->dev;
 	struct cyttsp5_core_data *cd = i2c_get_clientdata(client);
 
 	cyttsp5_release(cd);
 
-#ifdef CONFIG_TOUCHSCREEN_CYTTSP5_DEVICETREE_SUPPORT
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_DEVICETREE_SUPPORT
+	{
+	const struct of_device_id *match;
 	match = of_match_device(of_match_ptr(cyttsp5_i2c_of_match), dev);
 	if (match)
 		cyttsp5_devtree_clean_pdata(dev);
+	}
 #endif
 
 	return 0;
-}
-
-static void cyttsp5_i2c_shutdown(struct i2c_client *client)
-{
-	struct device *dev = &client->dev;
-	const struct of_device_id *match;
-	struct cyttsp5_core_data *cd = i2c_get_clientdata(client);
-
-	cyttsp5_release(cd);
-
-	match = of_match_device(of_match_ptr(cyttsp5_i2c_of_match), dev);
-	if (match)
-		cyttsp5_devtree_clean_pdata(dev);
 }
 
 static const struct i2c_device_id cyttsp5_i2c_id[] = {
@@ -193,25 +171,17 @@ static struct i2c_driver cyttsp5_i2c_driver = {
 	.driver = {
 		.name = CYTTSP5_I2C_NAME,
 		.owner = THIS_MODULE,
-/*		.pm = &cyttsp5_pm_ops,*/
+		.pm = &cyttsp5_pm_ops,
 		.of_match_table = cyttsp5_i2c_of_match,
 	},
 	.probe = cyttsp5_i2c_probe,
 	.remove = cyttsp5_i2c_remove,
-	.shutdown = cyttsp5_i2c_shutdown,
 	.id_table = cyttsp5_i2c_id,
 };
 
 static int __init cyttsp5_i2c_init(void)
 {
-	int rc = 0;
-#ifdef CONFIG_SAMSUNG_LPM_MODE
-	if (poweroff_charging) {
-		pr_notice("%s : LPM Charging Mode!!\n", __func__);
-		return rc;
-	}
-#endif
-	rc = i2c_add_driver(&cyttsp5_i2c_driver);
+	int rc = i2c_add_driver(&cyttsp5_i2c_driver);
 
 	pr_info("%s: Cypress TTSP v5 I2C Driver (Built %s) rc=%d\n",
 		 __func__, CY_DRIVER_DATE, rc);

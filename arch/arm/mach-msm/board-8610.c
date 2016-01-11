@@ -34,9 +34,6 @@
 #include <mach/gpiomux.h>
 #include <mach/msm_iomap.h>
 #include <mach/restart.h>
-#ifdef CONFIG_ION_MSM
-#include <mach/ion.h>
-#endif
 #ifdef CONFIG_SEC_DEBUG
 #include <mach/sec_debug.h>
 #endif
@@ -63,26 +60,6 @@
 #include <mach/msm8x10-thermistor.h>
 #endif
 
-#ifdef CONFIG_PROC_AVC
-#include <linux/proc_avc.h>
-#endif
-
-static struct memtype_reserve msm8610_reserve_table[] __initdata = {
-	[MEMTYPE_SMI] = {
-	},
-	[MEMTYPE_EBI0] = {
-		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
-	},
-	[MEMTYPE_EBI1] = {
-		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
-	},
-};
-
-static int msm8610_paddr_to_memtype(unsigned int paddr)
-{
-	return MEMTYPE_EBI1;
-}
-
 static struct of_dev_auxdata msm8610_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF9824000, \
 			"msm_sdcc.1", NULL),
@@ -95,22 +72,14 @@ static struct of_dev_auxdata msm8610_auxdata_lookup[] __initdata = {
 	{}
 };
 
-static struct reserve_info msm8610_reserve_info __initdata = {
-	.memtype_reserve_table = msm8610_reserve_table,
-	.paddr_to_memtype = msm8610_paddr_to_memtype,
-};
-
 static void __init msm8610_early_memory(void)
 {
-	reserve_info = &msm8610_reserve_info;
-	of_scan_flat_dt(dt_scan_for_memory_hole, msm8610_reserve_table);
+	of_scan_flat_dt(dt_scan_for_memory_hole, NULL);
 }
 
 static void __init msm8610_reserve(void)
 {
-	reserve_info = &msm8610_reserve_info;
-	of_scan_flat_dt(dt_scan_for_memory_reserve, msm8610_reserve_table);
-	msm_reserve();
+	of_scan_flat_dt(dt_scan_for_memory_reserve, NULL);
 }
 
 void __init msm8610_add_drivers(void)
@@ -164,10 +133,6 @@ void __init msm8610_init(void)
 	sec_debug_init();
 #endif
 
-#ifdef CONFIG_PROC_AVC
-	sec_avc_log_init();
-#endif
-
 	if (socinfo_init() < 0)
 		pr_err("%s: socinfo_init() failed\n", __func__);
 
@@ -183,7 +148,7 @@ static const char *msm8610_dt_match[] __initconst = {
 	NULL
 };
 
-DT_MACHINE_START(MSM8610_DT, "Qualcomm MSM 8x10 / MSM 8x12 (Flattened Device Tree)")
+DT_MACHINE_START(MSM8610_DT, "Qualcomm MSM 8610 (Flattened Device Tree)")
 	.map_io = msm_map_msm8610_io,
 	.init_irq = msm_dt_init_irq,
 	.init_machine = msm8610_init,

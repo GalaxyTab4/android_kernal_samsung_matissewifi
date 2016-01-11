@@ -30,13 +30,7 @@
 #include "cyttsp5_regs.h"
 #include <linux/cyttsp5_platform.h>
 
-#if defined(CONFIG_SEC_ATLANTIC_PROJECT)
-#include <linux/of_gpio.h>
-#endif
-
-#ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_BUTTON
 #define ENABLE_VIRTUAL_KEYS
-#endif
 
 #define MAX_NAME_LENGTH		64
 
@@ -536,10 +530,6 @@ static char *touch_setting_names[CY_IC_GRPNUM_NUM] = {
 	NULL,			/* CY_IC_GRPNUM_TTHE_REGS */
 };
 
-#ifdef CONFIG_SEC_ATLANTIC_PROJECT
- int avdd_gpio;
-#endif
-
 static struct cyttsp5_core_platform_data *create_and_get_core_pdata(
 		struct device_node *core_node)
 {
@@ -564,19 +554,11 @@ static struct cyttsp5_core_platform_data *create_and_get_core_pdata(
 	if (rc)
 		goto fail_free;
 	pdata->hid_desc_register = value;
-#if !defined(CONFIG_SEC_ATLANTIC_PROJECT)
+
 	/* Optional fields */
 	rc = of_property_read_u32(core_node, "cy,rst_gpio", &value);
 	if (!rc)
 		pdata->rst_gpio = value;
-
-	rc = of_property_read_u32(core_node, "cy,pwr_1p8", &value);
-	if (!rc)
-		pdata->pwr_1p8 = value;
-
-	rc = of_property_read_u32(core_node, "cy,pwr_3p3", &value);
-	if (!rc)
-		pdata->pwr_3p3 = value;
 
 	rc = of_property_read_u32(core_node, "cy,level_irq_udelay", &value);
 	if (!rc)
@@ -593,10 +575,6 @@ static struct cyttsp5_core_platform_data *create_and_get_core_pdata(
 	rc = of_property_read_u32(core_node, "cy,flags", &value);
 	if (!rc)
 		pdata->flags = value;
-#else
-	avdd_gpio = of_get_named_gpio(core_node, "tsp,avdd-gpio", 0);
-	printk(KERN_INFO "[TSP] %s: avdd=%d\n", __func__, avdd_gpio);
-#endif
 
 	for (i = 0; i < ARRAY_SIZE(touch_setting_names); i++) {
 		if (touch_setting_names[i] == NULL)
@@ -614,11 +592,11 @@ static struct cyttsp5_core_platform_data *create_and_get_core_pdata(
 
 	pr_debug("%s: irq_gpio:%d rst_gpio:%d hid_desc_register:%d\n"
 		"level_irq_udelay:%d vendor_id:%d product_id:%d\n"
-		"flags:%d pwr_1p8:%d pwr_3p3:%d \n",
+		"flags:%d\n",
 		__func__,
 		pdata->irq_gpio, pdata->rst_gpio, pdata->hid_desc_register,
 		pdata->level_irq_udelay, pdata->vendor_id, pdata->product_id,
-		pdata->flags,pdata->pwr_1p8,pdata->pwr_3p3);
+		pdata->flags);
 
 	pdata->xres = cyttsp5_xres;
 	pdata->init = cyttsp5_init;

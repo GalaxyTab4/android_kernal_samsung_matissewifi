@@ -55,7 +55,6 @@ enum smem_cache_ops {
 
 void *msm_vidc_open(int core_id, int session_type);
 int msm_vidc_close(void *instance);
-int msm_vidc_suspend(int core_id);
 int msm_vidc_querycap(void *instance, struct v4l2_capability *cap);
 int msm_vidc_enum_fmt(void *instance, struct v4l2_fmtdesc *f);
 int msm_vidc_s_fmt(void *instance, struct v4l2_format *f);
@@ -96,6 +95,7 @@ int msm_vidc_smem_get_domain_partition(void *instance,
 		u32 flags, enum hal_buffer buffer_type,
 		int *domain_num, int *partition_num);
 void *msm_vidc_smem_get_client(void *instance);
+int msm_vidc_instance_open(void);
 #endif
 
 struct msm_vidc_extradata_header {

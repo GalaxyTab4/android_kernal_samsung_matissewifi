@@ -33,6 +33,6 @@
 
 };
 
-&smsc_hub {
+&hsic_host {
 	status = "ok";
 };

@@ -235,7 +235,7 @@
                qcom,bam-rx-ep-pipe-index = <5>;        /*Producer pipe*/
                qcom,msm-bus,name = "uart0";
                qcom,msm-bus,num-cases = <2>;
-               /* qcom,msm-bus,active-only = <0>; */
+               qcom,msm-bus,active-only = <0>;
                qcom,msm-bus,num-paths = <1>;
                qcom,msm-bus,vectors-KBps = <86 512 0 0>,
                                           <86 512 500 800>;
@@ -446,20 +446,19 @@
 		qcom,therm-vadc = <&pm8226_vadc>;
 	};
 
-	qti,msm-pcm {
-		compatible = "qti,msm-pcm-dsp";
-		qti,msm-pcm-dsp-id = <0>;
-	};
-
-	qti,msm-pcm-low-latency {
-		compatible = "qti,msm-pcm-dsp";
-		qti,msm-pcm-dsp-id = <1>;
-		qti,msm-pcm-low-latency;
-		qti,latency-level = "regular";
+	qcom,msm-pcm {
+		compatible = "qcom,msm-pcm-dsp";
+		qcom,msm-pcm-dsp-id = <0>;
 	};
 
 	qcom,msm-pcm-routing {
 		compatible = "qcom,msm-pcm-routing";
+	};
+
+	qcom,msm-pcm-low-latency {
+		compatible = "qcom,msm-pcm-dsp";
+		qcom,msm-pcm-dsp-id = <1>;
+		qcom,msm-pcm-low-latency;
 	};
 
 	qcom,msm-pcm-lpa {
@@ -645,7 +644,6 @@
 
 	qcom,wdt@f9017000 {
 		compatible = "qcom,msm-watchdog";
-		qcom,memblock-reserve = <0x0 0x4000>;
 		reg = <0xf9017000 0x1000>;
 		interrupts = <0 3 0>, <0 4 0>;
 		qcom,bark-time = <15000>;
@@ -1311,7 +1309,7 @@
 		qcom,qsee-ce-hw-instance = <0>;
 		qcom,msm-bus,name = "qseecom-noc";
 		qcom,msm-bus,num-cases = <4>;
-		/* qcom,msm-bus,active-only = <0>; */
+		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,num-paths = <1>;
 		qcom,msm-bus,vectors-KBps =
 				<55 512 0 0>,
@@ -1331,7 +1329,7 @@
 		qcom,ce-hw-shared;
 		qcom,msm-bus,name = "qcrypto-noc";
 		qcom,msm-bus,num-cases = <2>;
-		/* qcom,msm-bus,active-only = <0>; */
+		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,num-paths = <1>;
 		qcom,msm-bus,vectors-KBps =
 				<55 512 0 0>,
@@ -1349,7 +1347,7 @@
 		qcom,ce-hw-shared;
 		qcom,msm-bus,name = "qcedev-noc";
 		qcom,msm-bus,num-cases = <2>;
-		/* qcom,msm-bus,active-only = <0>; */
+		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,num-paths = <1>;
 		qcom,msm-bus,vectors-KBps =
 				<55 512 0 0>,

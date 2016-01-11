@@ -41,7 +41,7 @@ struct msm_vib {
 
 static void set_vibrator(int motor_en, int on)
 {
-	pr_info("[VIB] %s, on=%d\n",__func__, on);
+	pr_debug("[VIB] %s, on=%d\n",__func__, on);
 
 	gpio_set_value(motor_en, on);
 }
@@ -55,15 +55,15 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
 	hrtimer_cancel(&vib->vib_timer);
 
 	if (value == 0) {
-		pr_info("[VIB] OFF\n");
+		pr_debug("[VIB] OFF\n");
 		vib->state = 0;
 	}
 	else {
-		pr_info("[VIB] ON, Duration : %d msec\n" , value);
+		pr_debug("[VIB] ON, Duration : %d msec\n" , value);
 		vib->state = 1;
 
 		if (value == 0x7fffffff){
-			pr_info("[VIB] No Use Timer %d \n", value);
+			pr_debug("[VIB] No Use Timer %d \n", value);
 		}
 		else	{
 			value = (value > vib->timeout ?
@@ -114,7 +114,7 @@ static int msm_vibrator_suspend(struct device *dev)
 {
 	struct msm_vib *vib = dev_get_drvdata(dev);
 
-	pr_info("[VIB] %s\n",__func__);
+	pr_debug("[VIB] %s\n",__func__);
 
 	hrtimer_cancel(&vib->vib_timer);
 	cancel_work_sync(&vib->work);
@@ -126,14 +126,13 @@ static int msm_vibrator_suspend(struct device *dev)
 #endif
 
 static SIMPLE_DEV_PM_OPS(vibrator_pm_ops, msm_vibrator_suspend, NULL);
-extern int system_rev;
-extern int expander_gpio_config(unsigned config, unsigned disable);
+
 static int msm_vibrator_probe(struct platform_device *pdev)
 {
 	struct msm_vib *vib;
 	int rc = 0;
 
-	pr_info("[VIB] %s\n",__func__);
+	pr_debug("[VIB] %s\n",__func__);
 
 	vib = devm_kzalloc(&pdev->dev, sizeof(*vib), GFP_KERNEL);
 	if (!vib)	{
@@ -152,50 +151,16 @@ static int msm_vibrator_probe(struct platform_device *pdev)
 	#ifdef CONFIG_SEC_AFYON_PROJECT
 		vib->pmic_gpio_enabled = 0;
 	#endif
-
+	
 	printk(KERN_ALERT " VIB PMIC GPIO ENABLED Flag is %d \n", vib->pmic_gpio_enabled);
 	if (!(vib->pmic_gpio_enabled)){
-
-	#if defined (CONFIG_GPIO_PCAL6416A)
-		#ifdef CONFIG_MACH_ATLANTICLTE_ATT
-		if(system_rev == 0) {
-			rc = gpio_tlmm_config(GPIO_CFG(vib->motor_en, 0, GPIO_CFG_OUTPUT,
-				GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
-                        if (rc < 0) {
-                                pr_err("%s: gpio_tlmm_config is failed\n",__func__);
-                                gpio_free(vib->motor_en);
-                                return rc;
-                        }
-		}
-		else {
-			rc = expander_gpio_config(GPIO_CFG(vib->motor_en, 0, GPIO_CFG_OUTPUT,
-				GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
-
+		rc = gpio_tlmm_config(GPIO_CFG(vib->motor_en, 0, GPIO_CFG_OUTPUT,
+			GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
 			if (rc < 0) {
-				pr_err("%s: expander_tlmm_config is failed\n",__func__);
+				pr_err("%s: gpio_tlmm_config is failed\n",__func__);
+				gpio_free(vib->motor_en);
 				return rc;
 			}
-		}
-		#else
-		rc = expander_gpio_config(GPIO_CFG(vib->motor_en, 0, GPIO_CFG_OUTPUT,
-					GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
-
-		if (rc < 0) {
-				pr_err("%s: expander_tlmm_config is failed\n",__func__);
-				return rc;
-		}
-		#endif
-
-	#else
-
-	rc = gpio_tlmm_config(GPIO_CFG(vib->motor_en, 0, GPIO_CFG_OUTPUT,
-		GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
-	if (rc < 0) {
-		pr_err("%s: gpio_tlmm_config is failed\n",__func__);
-		gpio_free(vib->motor_en);
-		return rc;
-	}
-	#endif
 	}
 	vib->timeout = VIB_DEFAULT_TIMEOUT;
 

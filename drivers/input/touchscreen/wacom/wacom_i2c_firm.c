@@ -28,12 +28,13 @@ char Firmware_checksum[] = { 0x1F, 0x4D, 0x20, 0xD3, 0x20, };/*ver 0x208*/
 #else
 char Firmware_checksum[] = { 0x1F, 0x19, 0x7E, 0x3D, 0xB3, };/*ver 0x174*/
 #endif
+char B934_checksum[] = { 0x1F, 0x93, 0x7E, 0xDE, 0xAD, };	/*ver 0x076*/
 #ifdef CONFIG_SEC_LT03_PROJECT
-/* LT03 (Checksum :  49F7D40E ) */
-char B930_checksum[] = { 0x1F, 0x0E, 0xD4, 0xF7, 0x49, };	/*ver  0x0267*/
+/* LT03 (Checksum : 9C088EDC ) */
+char B930_checksum[] = { 0x1F, 0xDC, 0x8E, 0x08, 0x9C, };	/*ver  0x0260*/
 #else
-/* VIENNA (Checksum : F7FE6E3D) */
-char B930_checksum[] = { 0x1F, 0x3D, 0x6E, 0xFE, 0xF7, };	/*boot ver: 0x92 , ver 0x450*/
+/* VIENNA (Checksum : 25497A76) */
+char B930_checksum[] = { 0x1F, 0x76, 0x7A, 0x49, 0x25, };	/*boot ver: 0x92 , ver 0x330*/
 char B930_boot91_checksum[] = { 0x1F, 0x00, 0xBC, 0x33, 0xDF, };	/*boot ver: 0x91 , ver 0x200*/
 #endif
 
@@ -71,8 +72,10 @@ void wacom_i2c_init_firm_data(void)
 			__func__);
 	} else if (type == EPEN_DTYPE_B934) {
 		printk(KERN_INFO
-			"%s: Digitizer type is B934, fw update is not supported\n",
+			"%s: Digitizer type is B934\n",
 			__func__);
+		memcpy(Firmware_checksum, B934_checksum,
+			sizeof(Firmware_checksum));
 	} else if (type == EPEN_DTYPE_B930) {/*VIENNALTE*/
 		printk(KERN_INFO
 			"%s: Digitizer type is B930A\n",

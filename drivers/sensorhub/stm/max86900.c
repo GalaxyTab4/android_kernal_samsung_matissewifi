@@ -23,27 +23,17 @@
 
 #define MAX86900_I2C_RETRY_DELAY	10
 #define MAX86900_I2C_MAX_RETRIES	5
-#define MAX86900_COUNT_MAX		65532
-#define MAX86900_WHOAMI_REG		0xFE
+#define MAX86900_COUNT_MAX		65535
+#define MAX86900_WHOAMI_REG		0xFF
 #define MAX86900_WHOAMI			0x01
 #define MAX86900A_WHOAMI		0x11
-#define MAX86900A_REV_ID		0x00
-#define MAX86900B_REV_ID		0x04
-#define MAX86900C_REV_ID		0x05
-
 #define MAX86900_DEFAULT_CURRENT	0x55
 #define MAX86900A_DEFAULT_CURRENT	0xFF
-#define MAX86900C_DEFAULT_CURRENT	0x0F
-
 #define MODULE_NAME_HRM			"hrm_sensor"
 #define CHIP_NAME			"MAX86900"
 #define VENDOR				"MAXIM"
 #define HRM_LDO_ON	1
 #define HRM_LDO_OFF	0
-#define MAX_EOL_RESULT 132
-#define MAX_LIB_VER 20
-
-#define SAMPLE_RATE 4
 
 /* I2C function */
 static int max86900_write_reg(struct max86900_device_data *device,
@@ -126,38 +116,17 @@ static int max86900_regulator_onoff(struct max86900_device_data *data, int onoff
 		goto err_1p8;
 	}
 
-#if defined(CONFIG_SEC_KACTIVE_PROJECT) || defined(CONFIG_MACH_KSPORTSLTE_SPR)
-	data->vdd_3p3 = regulator_get(NULL, data->led_l19);
-	if (IS_ERR(data->vdd_3p3)) {
-		pr_err("%s - regulator_get fail\n", __func__);
-		goto err_3p3;
-	}
-#endif
 	pr_info("%s - onoff = %d\n", __func__, onoff);
 
 	if (onoff == HRM_LDO_ON) {
 		regulator_set_voltage(data->vdd_1p8, 1800000, 1800000);
 		regulator_enable(data->vdd_1p8);
-#if defined(CONFIG_SEC_KACTIVE_PROJECT) || defined(CONFIG_MACH_KSPORTSLTE_SPR)
-		regulator_set_voltage(data->vdd_3p3, 3300000, 3300000);
-		regulator_enable(data->vdd_3p3);
-#endif
 	} else {
 		regulator_disable(data->vdd_1p8);
-#if defined(CONFIG_SEC_KACTIVE_PROJECT) || defined(CONFIG_MACH_KSPORTSLTE_SPR)
-		regulator_disable(data->vdd_3p3);
-#endif
 	}
 
 	regulator_put(data->vdd_1p8);
-#if defined(CONFIG_SEC_KACTIVE_PROJECT) || defined(CONFIG_MACH_KSPORTSLTE_SPR)
-	regulator_put(data->vdd_3p3);
-#endif
 	return 0;
-#if defined(CONFIG_SEC_KACTIVE_PROJECT) || defined(CONFIG_MACH_KSPORTSLTE_SPR)
-err_3p3:
-	regulator_put(data->vdd_1p8);
-#endif
 err_1p8:
 	return -ENODEV;
 }
@@ -195,7 +164,7 @@ static int max86900_init_device(struct max86900_device_data *data)
 		return -EIO;
 	}
 
-	err = max86900_write_reg(data, MAX86900_SPO2_CONFIGURATION, 0x51); //400hz 400us
+	err = max86900_write_reg(data, MAX86900_SPO2_CONFIGURATION, 0x47);
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_SPO2_CONFIGURATION!\n",
 			__func__);
@@ -259,15 +228,12 @@ static int max86900_enable(struct max86900_device_data *data)
 	int err;
 	data->led = 0;
 	data->sample_cnt = 0;
-	data->ir_sum = 0;
-	data->r_sum = 0;
 
 	mutex_lock(&data->activelock);
 	err = max86900_write_reg(data, MAX86900_LED_CONFIGURATION, data->default_current);
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_LED_CONFIGURATION!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
 		return -EIO;
 	}
 
@@ -275,7 +241,6 @@ static int max86900_enable(struct max86900_device_data *data)
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_FIFO_WRITE_POINTER!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
 		return -EIO;
 	}
 
@@ -283,7 +248,6 @@ static int max86900_enable(struct max86900_device_data *data)
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_OVF_COUNTER!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
 		return -EIO;
 	}
 
@@ -291,7 +255,6 @@ static int max86900_enable(struct max86900_device_data *data)
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_FIFO_READ_POINTER!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
 		return -EIO;
 	}
 
@@ -299,7 +262,6 @@ static int max86900_enable(struct max86900_device_data *data)
 	if (err != 0) {
 		printk("%s - error initializing MAX86900_MODE_CONFIGURATION!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
 		return -EIO;
 	}
 	enable_irq(data->irq);
@@ -314,18 +276,10 @@ static int max86900_disable(struct max86900_device_data *data)
 	mutex_lock(&data->activelock);
 	disable_irq(data->irq);
 
-	err = max86900_write_reg(data, MAX86900_MODE_CONFIGURATION, 0x40);
+	err = max86900_write_reg(data, MAX86900_MODE_CONFIGURATION, 0x83);
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_MODE_CONFIGURATION!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
-		return -EIO;
-	}
-	err = max86900_write_reg(data, MAX86900_MODE_CONFIGURATION, 0x80);
-	if (err != 0) {
-		pr_err("%s - error initializing MAX86900_MODE_CONFIGURATION!\n",
-			__func__);
-		mutex_unlock(&data->activelock);
 		return -EIO;
 	}
 	mutex_unlock(&data->activelock);
@@ -394,9 +348,9 @@ static int max86900_eol_test_control(struct max86900_device_data *data)
 					MAX86900_SPO2_CONFIGURATION!\n", __func__);
 			return -EIO;
 		}
-	} else if (data->sample_cnt < ((data->hr_range2 + 297) + 400 * 10)) {
+	} else if (data->sample_cnt < 1500) {
 		data->hr_range = 3;
-	} else if (data->sample_cnt == ((data->hr_range2 + 297) + 400 * 10)) {
+	} else if (data->sample_cnt == 1500) {
 		err = max86900_write_reg(data, MAX86900_LED_CONFIGURATION,
 				data->default_current);
 		if (err != 0) {
@@ -421,7 +375,6 @@ static int max86900_read_data(struct max86900_device_data *device, u16 *data)
 	u8 err;
 	u8 recvData[4] = { 0x00, };
 	int i;
-	int ret = 0;
 
 	if (device->sample_cnt == MAX86900_COUNT_MAX)
 		device->sample_cnt = 0;
@@ -438,10 +391,13 @@ static int max86900_read_data(struct max86900_device_data *device, u16 *data)
 			| ((((u16)recvData[i * 2 + 1])) & 0x00ff);
 	}
 
-	if ((device->sample_cnt % 4000) == 1)
-		pr_info("%s - %u, %u\n", __func__, data[0], data[1]);
+	data[2] = device->led;
 
-	if (device->sample_cnt == 20 && device->led == 0) {
+	if ((device->sample_cnt % 1000) == 1)
+		pr_info("%s - %u, %u, %u, %u\n", __func__,
+			data[0], data[1], data[2], data[3]);
+
+	if (device->sample_cnt == 3 && device->led == 0) {
 		err = max86900_read_temperature(device);
 		if (err < 0) {
 			pr_err("%s - max86900_read_temperature err : %d\n",
@@ -458,34 +414,18 @@ static int max86900_read_data(struct max86900_device_data *device, u16 *data)
 			return -EIO;
 		}
 	} else {
-		device->ir_sum += data[0];
-		device->r_sum += data[1];
-		if ((device->sample_cnt % SAMPLE_RATE) == SAMPLE_RATE - 1) {
-			data[0] = device->ir_sum / SAMPLE_RATE;
-			data[1] = device->r_sum / SAMPLE_RATE;
-			device->ir_sum = 0;
-			device->r_sum = 0;
-			ret = 0;
-		} else
-			ret = 1;
-
 		if (device->sample_cnt++ > 100 && device->led == 0) {
 			device->led = 1;
 		}
 	}
 
-	return ret;
+	return 0;
 }
 
 void max86900_mode_enable(struct max86900_device_data *data, int onoff)
 {
 	int err;
 	if (onoff) {
-		if (atomic_read(&data->is_enable)) {
-			pr_err("%s - already enabled !!!\n", __func__);
-			goto exit;
-		}
-		atomic_set(&data->is_enable, 1);
 		if (data->sub_ldo4 != NULL) {
 			err = max86900_regulator_onoff(data, HRM_LDO_ON);
 			if (err < 0)
@@ -498,16 +438,12 @@ void max86900_mode_enable(struct max86900_device_data *data, int onoff)
 					__func__, err);
 		}
 		err = max86900_enable(data);
-		if (err != 0)
+		if (err > 0)
 			pr_err("max86900_enable err : %d\n", err);
+		data->is_enable = 1;
 	} else {
-		if (!atomic_read(&data->is_enable)) {
-			pr_err("%s - already disabled !!!\n", __func__);
-			goto exit;
-		}
-		atomic_set(&data->is_enable, 0);
 		err = max86900_disable(data);
-		if (err != 0)
+		if (err > 0)
 			pr_err("max86900_disable err : %d\n", err);
 		if (data->sub_ldo4 != NULL) {
 			err = max86900_regulator_onoff(data, HRM_LDO_OFF);
@@ -515,8 +451,8 @@ void max86900_mode_enable(struct max86900_device_data *data, int onoff)
 				pr_err("%s max86900_regulator_off fail err = %d\n",
 					__func__, err);
 		}
+		data->is_enable = 0;
 	}
-exit:
 	pr_info("%s - part_type = %u, onoff = %d\n", __func__, data->part_type, onoff);
 }
 
@@ -526,7 +462,7 @@ static ssize_t max86900_enable_show(struct device *dev,
 {
     struct max86900_device_data *data = dev_get_drvdata(dev);
 
-    return sprintf(buf, "%d\n", atomic_read(&data->is_enable));
+    return sprintf(buf, "%d\n", data->is_enable);
 }
 
 static ssize_t max86900_enable_store(struct device *dev,
@@ -637,14 +573,6 @@ static int max86900_eol_test_enable(struct max86900_device_data *data)
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_LED_CONFIGURATION!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
-		return -EIO;
-	}
-
-	err = max86900_write_reg(data, MAX86900_SPO2_CONFIGURATION, 0x47); //100Hz 1600us
-	if (err != 0) {
-		pr_err("%s - error initializing MAX86900_SPO2_CONFIGURATION!\n",
-			__func__);
 		return -EIO;
 	}
 
@@ -653,7 +581,6 @@ static int max86900_eol_test_enable(struct max86900_device_data *data)
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_FIFO_WRITE_POINTER!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
 		return -EIO;
 	}
 
@@ -661,7 +588,6 @@ static int max86900_eol_test_enable(struct max86900_device_data *data)
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_OVF_COUNTER!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
 		return -EIO;
 	}
 
@@ -669,7 +595,6 @@ static int max86900_eol_test_enable(struct max86900_device_data *data)
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_FIFO_READ_POINTER!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
 		return -EIO;
 	}
 
@@ -678,7 +603,6 @@ static int max86900_eol_test_enable(struct max86900_device_data *data)
 	if (err != 0) {
 		pr_err("%s - error initializing MAX86900_MODE_CONFIGURATION!\n",
 			__func__);
-		mutex_unlock(&data->activelock);
 		return -EIO;
 	}
 
@@ -693,12 +617,12 @@ static void max86900_eol_test_onoff(struct max86900_device_data *data, int onoff
 	if (onoff) {
 		err = max86900_eol_test_enable(data);
 		data->eol_test_is_enable = 1;
-		if (err != 0)
+		if (err < 0)
 			pr_err("max86900_eol_test_enable err : %d\n", err);
 	} else {
 		pr_info("%s - eol test off\n", __func__);
 		err = max86900_disable(data);
-		if (err != 0)
+		if (err < 0)
 			pr_err("max86900_disable err : %d\n", err);
 
 		data->hr_range = 0;
@@ -709,7 +633,7 @@ static void max86900_eol_test_onoff(struct max86900_device_data *data, int onoff
 			pr_err("%s max86900_init device fail err = %d", __func__, err);
 
 		err = max86900_enable(data);
-		if (err != 0)
+		if (err < 0)
 			pr_err("max86900_enable err : %d\n", err);
 
 		data->eol_test_is_enable = 0;
@@ -742,8 +666,6 @@ static ssize_t led_current_store(struct device *dev,
 	err = max86900_set_led_current(data);
 	if (err < 0)
 		return err;
-
-	data->default_current = data->led_current;
 
 	return size;
 }
@@ -897,22 +819,17 @@ static ssize_t eol_test_result_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct max86900_device_data *data = dev_get_drvdata(dev);
-	unsigned int buf_len;
-	buf_len = strlen(buf) + 1;
-	if (buf_len > MAX_EOL_RESULT)
-		buf_len = MAX_EOL_RESULT;
 
-	if (data->eol_test_result != NULL)
-		kfree(data->eol_test_result);
-
-	data->eol_test_result = kzalloc(sizeof(char) * buf_len, GFP_KERNEL);
 	if (data->eol_test_result == NULL) {
-		pr_err("max86900_%s - couldn't allocate memory\n",
-			__func__);
-		return -ENOMEM;
+		data->eol_test_result = kzalloc(sizeof(char), GFP_KERNEL);
+		if (data->eol_test_result == NULL) {
+			pr_err("max86900_%s - couldn't allocate memory\n",
+				__func__);
+			return -ENOMEM;
+		}
 	}
-	strncpy(data->eol_test_result, buf, buf_len);
-	pr_info("max86900_%s - result = %s, buf_len(%u)\n", __func__, data->eol_test_result, buf_len);
+	strcpy(data->eol_test_result, buf);
+	pr_info("max86900_%s - result = %s\n", __func__, data->eol_test_result);
 	data->eol_test_status = 1;
 	return size;
 }
@@ -922,11 +839,6 @@ static ssize_t eol_test_result_show(struct device *dev,
 {
 	struct max86900_device_data *data = dev_get_drvdata(dev);
 
-	if (data->eol_test_result == NULL) {
-		pr_info("max86900_%s - data->eol_test_result is NULL\n", __func__);
-		data->eol_test_status = 0;
-		return snprintf(buf, PAGE_SIZE, "%s\n", "NO_EOL_TEST");
-	}
 	pr_info("max86900_%s - result = %s\n", __func__, data->eol_test_result);
 	data->eol_test_status = 0;
 	return snprintf(buf, PAGE_SIZE, "%s\n", data->eol_test_result);
@@ -972,7 +884,6 @@ static ssize_t int_pin_check(struct device *dev,
 	if ((err = max86900_read_reg(data, &recvData, 1)) != 0) {
 		pr_err("max86900_%s - max86900_read_reg err:%d, address:0x%02x\n",
 			__func__, err, recvData);
-		max86900_regulator_onoff(data, HRM_LDO_OFF);
 		goto exit;
 	}
 
@@ -995,63 +906,6 @@ static ssize_t int_pin_check(struct device *dev,
 exit:
 	return snprintf(buf, PAGE_SIZE, "%d\n", err);
 }
-
-static ssize_t max86900_lib_ver_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
-{
-	struct max86900_device_data *data = dev_get_drvdata(dev);
-	unsigned int buf_len;
-	buf_len = strlen(buf) + 1;
-	if (buf_len > MAX_LIB_VER)
-		buf_len = MAX_LIB_VER;
-
-	if (data->lib_ver != NULL)
-		kfree(data->lib_ver);
-
-	data->lib_ver = kzalloc(sizeof(char) * buf_len, GFP_KERNEL);
-	if (data->lib_ver == NULL) {
-		pr_err("%s - couldn't allocate memory\n", __func__);
-		return -ENOMEM;
-	}
-	strncpy(data->lib_ver, buf, buf_len);
-	pr_info("%s - lib_ver = %s\n", __func__, data->lib_ver);
-	return size;
-}
-
-static ssize_t max86900_lib_ver_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct max86900_device_data *data = dev_get_drvdata(dev);
-
-	if (data->lib_ver == NULL) {
-		pr_info("%s - data->lib_ver is NULL\n", __func__);
-		return snprintf(buf, PAGE_SIZE, "%s\n", "NULL");
-	}
-	pr_info("%s - lib_ver = %s\n", __func__, data->lib_ver);
-	return snprintf(buf, PAGE_SIZE, "%s\n", data->lib_ver);
-}
-
-static ssize_t max86900_hrm_flush_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
-{
-	struct max86900_device_data *data = dev_get_drvdata(dev);
-	u8 handle = 0;
-
-	if (sysfs_streq(buf, "17")) /* ID_SAM_HRM */
-		handle = 17;
-	else if (sysfs_streq(buf, "18")) /* ID_AOSP_HRM */
-		handle = 18;
-	else if (sysfs_streq(buf, "19")) /* ID_HRM_RAW */
-		handle = 19;
-	else {
-		pr_info("%s: invalid value %d\n", __func__, *buf);
-		return -EINVAL;
-	}
-
-	input_report_rel(data->hrm_input_dev, REL_MISC, handle);
-	return size;
-}
-
 static DEVICE_ATTR(name, S_IRUGO, max86900_name_show, NULL);
 static DEVICE_ATTR(vendor, S_IRUGO, max86900_vendor_show, NULL);
 static DEVICE_ATTR(led_current, S_IRUGO | S_IWUSR | S_IWGRP,
@@ -1070,10 +924,6 @@ static DEVICE_ATTR(eol_test_result, S_IRUGO | S_IWUSR | S_IWGRP,
 	eol_test_result_show, eol_test_result_store);
 static DEVICE_ATTR(eol_test_status, S_IRUGO, eol_test_status_show, NULL);
 static DEVICE_ATTR(int_pin_check, S_IRUGO, int_pin_check, NULL);
-static DEVICE_ATTR(lib_ver, S_IRUGO | S_IWUSR | S_IWGRP,
-	max86900_lib_ver_show, max86900_lib_ver_store);
-static DEVICE_ATTR(hrm_flush, S_IWUSR | S_IWGRP,
-	NULL, max86900_hrm_flush_store);
 
 static struct device_attribute *hrm_sensor_attrs[] = {
 	&dev_attr_name,
@@ -1087,8 +937,6 @@ static struct device_attribute *hrm_sensor_attrs[] = {
 	&dev_attr_eol_test_result,
 	&dev_attr_eol_test_status,
 	&dev_attr_int_pin_check,
-	&dev_attr_lib_ver,
-	&dev_attr_hrm_flush,
 	NULL,
 };
 
@@ -1096,27 +944,19 @@ irqreturn_t max86900_irq_handler(int irq, void *device)
 {
 	int err;
 	struct max86900_device_data *data = device;
-	u16 raw_data[2] = {0x00, };
+	u16 raw_data[4] = {0x00, };
 
 	err = max86900_read_data(data, raw_data);
 	if (err < 0)
 		pr_err("max86900_read_data err : %d\n", err);
 
-	if (err == 0) {
-		input_report_rel(data->hrm_input_dev, REL_X, raw_data[0] + 1); /* IR */
-		input_report_rel(data->hrm_input_dev, REL_Y, raw_data[1] + 1); /* RED */
-		input_report_rel(data->hrm_input_dev, REL_Z, data->hrm_temp + 1);
-		input_sync(data->hrm_input_dev);
-	}
+	input_report_rel(data->hrm_input_dev, REL_X, raw_data[0] + 1); /* IR */
+	input_report_rel(data->hrm_input_dev, REL_Y, raw_data[1] + 1); /* RED */
+	input_report_rel(data->hrm_input_dev, REL_Z, data->hrm_temp + 1);
+	input_sync(data->hrm_input_dev);
 
 	return IRQ_HANDLED;
 }
-
-
-#if defined(CONFIG_MACH_KLTE_KDI)
-extern unsigned int system_rev;
-#endif
-
 
 static int max86900_parse_dt(struct max86900_device_data *data,
 	struct device *dev)
@@ -1126,17 +966,9 @@ static int max86900_parse_dt(struct max86900_device_data *data,
 
 	if (dNode == NULL)
 		return -ENODEV;
-#if defined(CONFIG_MACH_KLTE_KDI)
-	if(system_rev==11)
-		data->hrm_int = of_get_named_gpio_flags(dNode,
-		"max86900,hrm_int-kdi-gpio", 0, &flags);
-	else
-		data->hrm_int = of_get_named_gpio_flags(dNode,
-		"max86900,hrm_int-gpio", 0, &flags);
-#else
+
 	data->hrm_int = of_get_named_gpio_flags(dNode,
 		"max86900,hrm_int-gpio", 0, &flags);
-#endif
 	if (data->hrm_int < 0) {
 		pr_err("%s - get hrm_int error\n", __func__);
 		return -ENODEV;
@@ -1144,10 +976,7 @@ static int max86900_parse_dt(struct max86900_device_data *data,
 
 	if (of_property_read_string(dNode, "max86900,sub_ldo4", &data->sub_ldo4) < 0)
 		pr_err("%s - get sub_ldo4 error\n", __func__);
-#if defined(CONFIG_SEC_KACTIVE_PROJECT) || defined(CONFIG_MACH_KSPORTSLTE_SPR)
-	if (of_property_read_string(dNode, "max86900,led_l19", &data->led_l19) < 0)
-		pr_err("%s - get led_l19 error\n", __func__);
-#endif
+
 	return 0;
 }
 
@@ -1192,7 +1021,7 @@ done:
 int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id )
 {
 	int err = -ENODEV;
-	u8 buffer[2] = {0, };
+	u8 buffer;
 
 	struct max86900_device_data *data;
 
@@ -1220,6 +1049,7 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id )
 	pr_info("%s - start \n", __func__);
 
 	data->hr_range = 0;
+	data->led_current = data->default_current;
 
 	err = max86900_parse_dt(data, &client->dev);
 	if (err < 0) {
@@ -1240,50 +1070,28 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id )
 
 	data->client->addr = MAX86900A_SLAVE_ADDR;
 
-	buffer[0] = MAX86900_WHOAMI_REG;
-	err = max86900_read_reg(data, buffer, 2);
-
-	if (buffer[1] == MAX86900A_WHOAMI) {
-		/* MAX86900A & MAX86900B */
-		switch(buffer[0]) {
-			case MAX86900A_REV_ID:
-				data->part_type = PART_TYPE_MAX86900A;
-				data->default_current = MAX86900A_DEFAULT_CURRENT;
-				break;
-			case MAX86900B_REV_ID:
-				data->part_type = PART_TYPE_MAX86900B;
-				data->default_current = MAX86900A_DEFAULT_CURRENT;
-				break;
-			case MAX86900C_REV_ID:
-				data->part_type = PART_TYPE_MAX86900C;
-				data->default_current = MAX86900C_DEFAULT_CURRENT;
-				break;
-			default:
-				pr_err("%s WHOAMI read error : REV ID : 0x%02x\n",
-				__func__, buffer[0]);
-				err = -ENODEV;
-				goto err_of_read_chipid;
-		}
-		pr_info("%s - MAX86900 OS21(0x%X), REV ID : 0x%02x\n",
-				__func__, MAX86900A_SLAVE_ADDR, buffer[0]);
-	} else {
+	buffer = MAX86900_WHOAMI_REG;
+	err = max86900_read_reg(data, &buffer, 1);
+	if (err) {
 		/* MAX86900 */
 		data->client->addr = MAX86900_SLAVE_ADDR;
-		buffer[0] = MAX86900_WHOAMI_REG;
-		err = max86900_read_reg(data, buffer, 2);
+		buffer = MAX86900_WHOAMI_REG;
+		err = max86900_read_reg(data, &buffer, 1);
 
 		if (err) {
 			pr_err("%s WHOAMI read fail\n", __func__);
 			err = -ENODEV;
-			goto err_of_read_chipid;
+			goto err_of_node;
 		}
 		data->part_type = PART_TYPE_MAX86900;
 		data->default_current = MAX86900_DEFAULT_CURRENT;
-		pr_info("%s - MAX86900 OS20 (0x%X)\n", __func__,
-				MAX86900_SLAVE_ADDR);
+		pr_info("%s - MAX86900 (0x%X)\n", __func__, MAX86900_SLAVE_ADDR);
+	} else {
+		/* MAX86900A */
+		data->part_type = PART_TYPE_MAX86900A;
+		data->default_current = MAX86900A_DEFAULT_CURRENT;
+		pr_info("%s - MAX86900A (0x%X)\n", __func__, MAX86900A_SLAVE_ADDR);
 	}
-
-	data->led_current = data->default_current;
 
 	/* allocate input device */
 	data->hrm_input_dev = input_allocate_device();
@@ -1298,7 +1106,6 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id )
 	input_set_capability(data->hrm_input_dev, EV_REL, REL_X);
 	input_set_capability(data->hrm_input_dev, EV_REL, REL_Y);
 	input_set_capability(data->hrm_input_dev, EV_REL, REL_Z);
-	input_set_capability(data->hrm_input_dev, EV_REL, REL_MISC);
 
 	err = input_register_device(data->hrm_input_dev);
 	if (err < 0) {
@@ -1373,8 +1180,6 @@ err_sensors_create_symlink:
 	input_unregister_device(data->hrm_input_dev);
 err_input_register_device:
 err_input_allocate_device:
-err_of_read_chipid:
-	max86900_regulator_onoff(data, HRM_LDO_OFF);
 err_of_node:
 	mutex_destroy(&data->i2clock);
 	mutex_destroy(&data->activelock);
@@ -1399,33 +1204,6 @@ static void max86900_shutdown(struct i2c_client *client)
 	pr_info("%s\n", __func__);
 }
 
-static int max86900_pm_suspend(struct device *dev)
-{
-	struct max86900_device_data *data = dev_get_drvdata(dev);
-	if (atomic_read(&data->is_enable)) {
-		max86900_mode_enable(data, HRM_LDO_OFF);
-		atomic_set(&data->is_suspend, 1);
-	}
-	pr_info("%s\n", __func__);
-	return 0;
-}
-
-static int max86900_pm_resume(struct device *dev)
-{
-	struct max86900_device_data *data = dev_get_drvdata(dev);
-	if (atomic_read(&data->is_suspend)) {
-		max86900_mode_enable(data, HRM_LDO_ON);
-		atomic_set(&data->is_suspend, 0);
-	}
-	pr_info("%s\n", __func__);
-	return 0;
-}
-
-static const struct dev_pm_ops max86900_pm_ops = {
-	.suspend = max86900_pm_suspend,
-	.resume = max86900_pm_resume
-};
-
 static struct of_device_id max86900_match_table[] = {
 	{ .compatible = "max86900",},
 	{},
@@ -1441,7 +1219,6 @@ static struct i2c_driver max86900_i2c_driver =
 	.driver = {
 	    .name = CHIP_NAME,
 	    .owner = THIS_MODULE,
-	    .pm = &max86900_pm_ops,
 	    .of_match_table = max86900_match_table,
 	},
 	.probe = max86900_probe,

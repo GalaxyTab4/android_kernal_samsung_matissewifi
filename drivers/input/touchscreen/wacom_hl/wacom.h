@@ -411,17 +411,6 @@ enum BOOST_LEVEL {
 #undef WACOM_USE_QUERY_DATA
 #endif
 
-
-//#ifdef CONFIG_SEC_DVFS
-#include <linux/cpufreq.h>
-#define WACOM_BOOSTER_DVFS
-#define DVFS_STAGE_TRIPLE       3
-#define DVFS_STAGE_DUAL         2
-#define DVFS_STAGE_SINGLE       1
-#define DVFS_STAGE_NONE         0
-//#endif
-
-
 /*Parameters for wacom own features*/
 struct wacom_features {
 	int x_max;
@@ -500,17 +489,7 @@ struct wacom_i2c {
 #ifdef BATTERY_SAVING_MODE
 	bool battery_saving_mode;
 #endif
-#if defined(WACOM_BOOSTER_DVFS)
-	struct delayed_work	work_dvfs_off;
-	struct delayed_work	work_dvfs_chg;
-	struct mutex		dvfs_lock;
-	bool dvfs_lock_status;
-	int dvfs_boost_mode;
-	int dvfs_freq;
-	int dvfs_old_stauts;
-	bool stay_awake;
-
-#elif defined(WACOM_BOOSTER)
+#ifdef WACOM_BOOSTER
 	bool dvfs_lock_status;
 	struct delayed_work dvfs_off_work;
 	struct delayed_work dvfs_chg_work;
@@ -538,7 +517,6 @@ struct wacom_i2c {
 #endif
 	struct work_struct update_work;
 	struct fw_update_info update_info;
-	bool enabled;
 };
 
 #endif /* _LINUX_WACOM_H */

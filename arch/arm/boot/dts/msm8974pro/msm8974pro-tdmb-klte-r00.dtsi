@@ -10,13 +10,11 @@
  * GNU General Public License for more details.
  */
 
-/ {
+&soc {
 	aliases {
 		spi9 = &spi_9;
 	};
-};
 
-&soc {
 	i2c_99: i2c@f9965000 {
 		status = "disabled";
 	};
@@ -26,10 +24,10 @@
 		cell-index = <9>;
 		#address-cells = <1>;
 		#size-cells = <0>;
-		reg = <0xf9965000 0x1000>, <0xf9944000 0x19000>;
-		reg-names = "spi_physical", "spi_bam_physical";
-		interrupts = <0 103 0>, <0 239 0>;
-		interrupt-names = "spi_irq", "spi_bam_irq";
+		reg-names = "spi_physical";
+		reg = <0xf9965000 0x1000>;
+		interrupt-names = "spi_irq";
+		interrupts = <0 103 0>;
 		spi-max-frequency = <19200000>;
 
 		qcom,gpio-mosi = <&msmgpio 49 0>;
@@ -38,10 +36,7 @@
 		qcom,gpio-clk  = <&msmgpio 52 0>;
 
 		qcom,infinite-mode = <0>;
-		qcom,use-bam;
 		qcom,ver-reg-exists;
-		qcom,bam-consumer-pipe-index = <16>;
-		qcom,bam-producer-pipe-index = <17>;
 		qcom,master-id = <84>;
 
 		tdmb-spi@0 {
@@ -61,7 +56,6 @@
 		compatible = "samsung,tdmb";
 		tdmb_pwr_en = <&expander_gpios 5 0>;
 		tdmb_irq = <&msmgpio 73 0>;
-		tdmb_use_irq;
 	};
 
 };

@@ -502,8 +502,7 @@ signed char fReadStatus(void)
 	/*PTJ: Status = 06 means that Calibrate1 failed, for test with
 	id_setup_1 (ID-SETUP-1)*/
 	else
-//		return STATUS_ERROR;
-		return PASS;
+		return STATUS_ERROR;
 }
 
 
@@ -630,27 +629,25 @@ signed char fEraseTarget(void)
  ============================================================================*/
 unsigned int iLoadTarget(void)
 {
+	unsigned char bTemp;
 	unsigned int  iChecksumData = 0;
 	 /*Set SDATA to Strong Drive here because SendByte() does not */
 	SetSDATAStrong();
 	bTargetAddress = 0x00;
 	bTargetDataPtr = 0x00;
-	while (bTargetDataPtr < TargetDatabufLen)
-	{
-		unsigned char bTemp;
-
+	while (bTargetDataPtr < TargetDatabufLen) {
 		bTemp = abTargetDataOUT[bTargetDataPtr];
 		iChecksumData += bTemp;
-		SendByte(write_byte_start, 4);
-		/*PTJ: we need to be able to write 128 bytes from address 0x80 to 0xFF*/
-		SendByte(bTargetAddress, 7);
-		/*PTJ: we need to be able to write 128 bytes from address 0x80 to 0xFF*/
-		SendByte(bTemp, 8);
-		SendByte(write_byte_end, 3);
-		bTargetAddress += 2;
-		/*PTJ: inc by 2 in order to support a 128 byte address
-		space, MSB~1 for address*/
-		bTargetDataPtr++;
+	SendByte(write_byte_start, 4);
+	/*PTJ: we need to be able to write 128 bytes from address 0x80 to 0xFF*/
+	SendByte(bTargetAddress, 7);
+	/*PTJ: we need to be able to write 128 bytes from address 0x80 to 0xFF*/
+	SendByte(bTemp, 8);
+	SendByte(write_byte_end, 3);
+	bTargetAddress += 2;
+	/*PTJ: inc by 2 in order to support a 128 byte address
+	space, MSB~1 for address*/
+	bTargetDataPtr++;
 	}
 
 	return iChecksumData;
@@ -765,13 +762,13 @@ signed char fAccTargetBankChecksum(unsigned int *pAcc)
 
 void ReStartTarget(void)
 {
-#ifdef RESET_MODE
+	int i;
+	#ifdef RESET_MODE
 	/* Assert XRES, then release, then disable XRES-Enable */
 	AssertXRES();
 	Delay(XRES_CLK_DELAY);
 	DeassertXRES();
-#else
-	int i;
+	#else
 	/* Set all pins to highZ to avoid back powering
 	   the PSoC through the GPIO protection diodes.
 	*/
@@ -782,7 +779,7 @@ void ReStartTarget(void)
 		for (i = 0; i < 100; i++)
 			Delay(50000);
 	ApplyTargetVDD();
-#endif
+	#endif
 }
 
  /*============================================================================
@@ -932,13 +929,14 @@ signed char fVerifyTargetBlock(unsigned char bBankNumber,
 
 signed char fSecureTargetFlash(void)
 {
+	unsigned char bTemp;
+
 	bTargetAddress = 0x00;
 	bTargetDataPtr = 0x00;
 
 	SetSDATAStrong();
 	while (bTargetDataPtr < SecurityBytesPerBank) {
-	unsigned char bTemp;
-	bTemp = abTargetDataOUT[bTargetDataPtr];
+		bTemp = abTargetDataOUT[bTargetDataPtr];
 	SendByte(write_byte_start, 4);
 	SendByte(bTargetAddress, 7);
 		SendByte(bTemp, 8);

@@ -85,9 +85,6 @@ static ssize_t ir_current_show(struct device *dev,
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	if(data->uIr_Current == 0)
-		data->uIr_Current = DEFUALT_IR_CURRENT;
-
 	ssp_dbg("[SSP]: %s - Ir_Current Setting = %d\n",
 		__func__, data->uIr_Current);
 
@@ -101,7 +98,7 @@ static ssize_t ir_current_store(struct device *dev,
 	int iRet = 0;
 	u16 current_index = 0;
 	struct ssp_data *data = dev_get_drvdata(dev);
-	static u16 set_current[2][4] = { {12, 25, 50, 100},
+	static u16 set_current[2][4] = { {37, 75, 150, 300},
 					  {24, 16, 8, 0} };
 
 	iRet = kstrtou16(buf, 10, &uNewIrCurrent);

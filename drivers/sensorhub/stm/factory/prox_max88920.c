@@ -32,13 +32,12 @@
 #define LDI_GRAY	'1'
 #define LDI_WHITE	'2'
 
-#if defined(CONFIG_SEC_KACTIVE_PROJECT)
-#define CAL_SKIP_ADC	52
-#define CAL_FAIL_ADC	80
-#else
-#define CAL_SKIP_ADC	55
-#define CAL_FAIL_ADC	90
-#endif
+#define DEFUALT_HIGH_THRESHOLD	130
+#define DEFUALT_LOW_THRESHOLD	90
+#define TBD_HIGH_THRESHOLD	130
+#define TBD_LOW_THRESHOLD	90
+#define WHITE_HIGH_THRESHOLD	130
+#define WHITE_LOW_THRESHOLD	90
 
 /*************************************************************************/
 /* factory Sysfs                                                         */
@@ -70,7 +69,7 @@ static ssize_t proximity_avg_show(struct device *dev,
 static ssize_t proximity_avg_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
-	char chTempbuf[9] = { 0, };
+	char chTempbuf[4] = { 0 };
 	int iRet;
 	int64_t dEnable;
 	struct ssp_data *data = dev_get_drvdata(dev);
@@ -83,7 +82,7 @@ static ssize_t proximity_avg_store(struct device *dev,
 		return iRet;
 
 	if (dEnable) {
-		send_instruction(data, ADD_SENSOR, PROXIMITY_RAW, chTempbuf, 9);
+		send_instruction(data, ADD_SENSOR, PROXIMITY_RAW, chTempbuf, 4);
 		data->bProximityRawEnabled = true;
 	} else {
 		send_instruction(data, REMOVE_SENSOR, PROXIMITY_RAW,
@@ -97,13 +96,13 @@ static ssize_t proximity_avg_store(struct device *dev,
 static u16 get_proximity_rawdata(struct ssp_data *data)
 {
 	u16 uRowdata = 0;
-	char chTempbuf[9] = { 0, };
+	char chTempbuf[4] = { 0 };
 
 	s32 dMsDelay = 20;
 	memcpy(&chTempbuf[0], &dMsDelay, 4);
 
 	if (data->bProximityRawEnabled == false) {
-		send_instruction(data, ADD_SENSOR, PROXIMITY_RAW, chTempbuf, 9);
+		send_instruction(data, ADD_SENSOR, PROXIMITY_RAW, chTempbuf, 4);
 		msleep(200);
 		uRowdata = data->buf[PROXIMITY_RAW].prox[0];
 		send_instruction(data, REMOVE_SENSOR, PROXIMITY_RAW,
@@ -133,25 +132,14 @@ static ssize_t proximity_raw_data_show(struct device *dev,
 
 static int get_proximity_threshold(struct ssp_data *data)
 {
-	if (data->uCrosstalk < CAL_SKIP_ADC) {
-		data->uProxCanc = 0;
-		data->uProxCalResult = 2;
-		pr_info("[SSP] crosstalk < %d, skip calibration\n", CAL_SKIP_ADC);
-	} else if (data->uCrosstalk <= CAL_FAIL_ADC) {
-		data->uProxCanc = data->uCrosstalk * 5 / 10;
-		data->uProxCalResult = 1;
-	} else {
-		data->uProxCanc = 0;
-		data->uProxCalResult = 0;
-		pr_info("[SSP] crosstalk > %d, calibration failed\n", CAL_FAIL_ADC);
-		return ERROR;
-	}
-	data->uProxHiThresh = data->uProxHiThresh_default + data->uProxCanc;
-	data->uProxLoThresh = data->uProxLoThresh_default + data->uProxCanc;
+	if (data->uProxCanc <= (data->uProxLoThresh_default >> 1))
+		return FAIL;
 
-	pr_info("[SSP] %s - crosstalk_offset = %u(%u), HI_THD = %u, LOW_THD = %u\n",
-		__func__, data->uProxCanc, data->uCrosstalk,
-		data->uProxHiThresh, data->uProxLoThresh);
+	data->uProxHiThresh = data->uProxHiThresh_default
+		+ (data->uProxCanc - (data->uProxLoThresh_default >> 1));
+	data->uProxLoThresh = data->uProxLoThresh_default
+		+ (data->uProxCanc - (data->uProxLoThresh_default >> 1));
+
 	return SUCCESS;
 }
 
@@ -245,13 +233,8 @@ int proximity_open_calibration(struct ssp_data *data)
 		iRet = -EIO;
 	}
 
-	if (data->uProxCanc != 0) {
-		/*If there is an offset cal data. */
-		data->uProxHiThresh =
-			data->uProxHiThresh_default + data->uProxCanc;
-		data->uProxLoThresh =
-			data->uProxLoThresh_default + data->uProxCanc;
-	}
+	if (data->uProxCanc != 0) /*If there is an offset cal data. */
+		get_proximity_threshold(data);
 
 	pr_info("%s: proximity ps_canc = %d, ps_thresh hi - %d lo - %d\n",
 		__func__, data->uProxCanc, data->uProxHiThresh,
@@ -271,17 +254,15 @@ static int proximity_store_cancelation(struct ssp_data *data, int iCalCMD)
 	struct file *cancel_filp = NULL;
 
 	if (iCalCMD) {
-		data->uCrosstalk = get_proximity_rawdata(data);
-		iRet = get_proximity_threshold(data);
+		data->uProxCanc = get_proximity_rawdata(data);
+		get_proximity_threshold(data);
 	} else {
 		data->uProxHiThresh = data->uProxHiThresh_default;
 		data->uProxLoThresh = data->uProxLoThresh_default;
 		data->uProxCanc = 0;
 	}
 
-	if (iRet != ERROR)
-		set_proximity_threshold(data, data->uProxHiThresh,
-			data->uProxLoThresh);
+	set_proximity_threshold(data, data->uProxHiThresh, data->uProxLoThresh);
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -312,12 +293,18 @@ static ssize_t proximity_cancel_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
+	unsigned int uProxCanc = data->uProxCanc;
+
+	if (uProxCanc > (data->uProxLoThresh_default >> 1))
+		uProxCanc = uProxCanc - (data->uProxLoThresh_default >> 1);
+	else
+		uProxCanc = 0;
 
 	ssp_dbg("[SSP]: uProxThresh : hi : %u lo : %u, uProxCanc = %u\n",
-		data->uProxHiThresh, data->uProxLoThresh, data->uProxCanc);
+		data->uProxHiThresh, data->uProxLoThresh, uProxCanc);
 
-	return sprintf(buf, "%u,%u,%u\n", data->uProxCanc,
-		data->uProxHiThresh, data->uProxLoThresh);
+	return sprintf(buf, "%u,%u,%u\n", uProxCanc, data->uProxHiThresh,
+		data->uProxLoThresh);
 }
 
 static ssize_t proximity_cancel_store(struct device *dev,
@@ -424,15 +411,6 @@ static ssize_t proximity_thresh_low_store(struct device *dev,
 	return size;
 }
 
-static ssize_t proximity_cancel_pass_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct ssp_data *data = dev_get_drvdata(dev);
-
-	pr_info("[SSP] %s, %u\n", __func__, data->uProxCalResult);
-	return snprintf(buf, PAGE_SIZE, "%u\n", data->uProxCalResult);
-}
-
 static ssize_t barcode_emul_enable_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -474,7 +452,6 @@ static DEVICE_ATTR(thresh_high, S_IRUGO | S_IWUSR | S_IWGRP,
 	proximity_thresh_high_show, proximity_thresh_high_store);
 static DEVICE_ATTR(thresh_low, S_IRUGO | S_IWUSR | S_IWGRP,
 	proximity_thresh_low_show, proximity_thresh_low_store);
-static DEVICE_ATTR(prox_offset_pass, S_IRUGO, proximity_cancel_pass_show, NULL);
 
 static struct device_attribute *prox_attrs[] = {
 	&dev_attr_vendor,
@@ -486,7 +463,6 @@ static struct device_attribute *prox_attrs[] = {
 	&dev_attr_thresh_high,
 	&dev_attr_thresh_low,
 	&dev_attr_barcode_emul_en,
-	&dev_attr_prox_offset_pass,
 	NULL,
 };
 

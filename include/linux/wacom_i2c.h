@@ -48,12 +48,13 @@
 #else
 #define WACOM_FW_NAME_W9010		"epen/W9010_0174.bin"
 #endif
+#define WACOM_FW_NAME_W9010_B934		"epen/W9010_0076.bin"
 
 #ifdef CONFIG_SEC_LT03_PROJECT 
-#define WACOM_FW_NAME_W9007_BL92		"epen/W9007A_0267.bin"
-#define WACOM_FW_NAME_W9007_BL91		"epen/W9007A_0267.bin"
+#define WACOM_FW_NAME_W9007_BL92		"epen/W9007A_0260.bin"
+#define WACOM_FW_NAME_W9007_BL91		"epen/W9007A_0260.bin"
 #else
-#define WACOM_FW_NAME_W9007_BL92		"epen/W9007A_0450.bin"
+#define WACOM_FW_NAME_W9007_BL92		"epen/W9007A_0330.bin"
 #define WACOM_FW_NAME_W9007_BL91		"epen/W9007_0200.bin"
 #endif
 
@@ -80,7 +81,7 @@ extern unsigned int system_rev;
 #define COM_FLASH          0xff
 #define COM_CHECKSUM       0x63
 
-#if defined(CONFIG_SEC_LT03_PROJECT) || defined(CONFIG_SEC_VIENNA_PROJECT)
+#ifdef CONFIG_SEC_VIENNA_PROJECT
 #define WACOM_RESETPIN_DELAY
 #endif
 

@@ -27,6 +27,8 @@
 #include <linux/kconfig.h>
 #include <linux/device.h>
 
+#define SUPPORTED_CABLE_MAX 30	
+#define CABLE_NAME_MAX		SUPPORTED_CABLE_MAX
 #define EXTCON_DEV_NAME			"extcon-muic"
 /*
  * The standard cable name is to help support general notifier
@@ -51,14 +53,13 @@ enum extcon_cable_name {
 	EXTCON_USB_HOST,
 	EXTCON_USB_HOST_5V,
 	EXTCON_TA, /* Travel Adaptor */
-	EXTCON_UNDEFINED_CHARGER,
 	EXTCON_CEA936_CHG,	/* CEA936 A/B USB cable, Only for charging. */
+	EXTCON_FAST_CHARGER,
+	EXTCON_SLOW_CHARGER,
 	EXTCON_CHARGE_DOWNSTREAM, /* Charging an external device */
-#if defined (CONFIG_MUIC_DET_JACK)
-	EXTCON_EARJACK,
-#endif
 	EXTCON_MHL,
 	EXTCON_MHL_VB,
+	EXTCON_LINE_OUT,
 	EXTCON_DESKDOCK,
 	EXTCON_DESKDOCK_VB,
 	EXTCON_CARDOCK,
@@ -77,17 +78,9 @@ enum extcon_cable_name {
 #if defined(CONFIG_MUIC_MAX77804K_SUPPORT_HMT_DETECTION)
 	EXTCON_HMT,
 #endif
-#if defined(CONFIG_MUIC_MAX77804K_SUPPORT_LANHUB)
-	EXTCON_LANHUB,
-	EXTCON_LANHUB_TA,
-#endif
 	EXTCON_NONE,
 };
-
-#define SUPPORTED_CABLE_MAX (EXTCON_NONE + 1)
-#define CABLE_NAME_MAX		SUPPORTED_CABLE_MAX
-
-extern const char *extcon_cable_name[CABLE_NAME_MAX + 1];
+extern const char *extcon_cable_name[];
 
 struct extcon_cable;
 

@@ -467,7 +467,7 @@ static void process_rx_w(struct work_struct *work)
 			if(!strcmp(dev->port_usb->func.name,"ncm")) {
 				if (status < 0
 					|| ETH_HLEN > skb->len
-					|| skb->len > (dev->net->mtu + ETH_HLEN)) {
+					|| skb->len > dev->net->mtu) {
 					printk(KERN_ERR "usb: %s  drop incase of NCM rx length %d\n",__func__,skb->len);
 				} else {
 					printk(KERN_ERR "usb: %s  Dont drop incase of NCM rx length %d\n",__func__,skb->len);
@@ -1203,6 +1203,7 @@ struct net_device *gether_connect(struct gether *link)
 				link->close(link);
 		}
 		spin_unlock(&dev->lock);
+
 		netif_carrier_on(dev->net);
 		if (netif_running(dev->net))
 			eth_start(dev, GFP_ATOMIC);

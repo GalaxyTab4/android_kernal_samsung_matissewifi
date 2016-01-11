@@ -14,7 +14,7 @@
  */
 #include "../ssp.h"
 
-#if defined (CONFIG_SEC_KACTIVE_PROJECT) && !defined (CONFIG_MACH_KACTIVELTE_DCM)
+#if defined (CONFIG_SEC_KACTIVE_PROJECT)
 #define LPS25H_REV	0
 #else
 #define LPS25H_REV	3
@@ -38,16 +38,19 @@ static ssize_t sea_level_pressure_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
+	int iNewSeaLevelPressure;
 
-	sscanf(buf, "%d", &data->sealevelpressure);
+	sscanf(buf, "%d", &iNewSeaLevelPressure);
 
-	if (data->sealevelpressure == 0) {
+	if (iNewSeaLevelPressure == 0) {
 		pr_info("%s, our->temperature = 0\n", __func__);
-		data->sealevelpressure = -1;
+		iNewSeaLevelPressure = -1;
 	}
 
-	pr_info("[SSP] %s sea_level_pressure = %d\n",
-		__func__, data->sealevelpressure);
+	input_report_rel(data->pressure_input_dev, REL_DIAL,
+		iNewSeaLevelPressure);
+	input_sync(data->pressure_input_dev);
+
 	return size;
 }
 

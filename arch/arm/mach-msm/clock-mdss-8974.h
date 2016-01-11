@@ -32,6 +32,7 @@ struct hdmi_pll_vco_clk {
 	struct clk c;
 };
 
+
 struct edp_pll_vco_clk {
 	unsigned long ref_clk_rate;
 	unsigned long rate;	/* vco rate */
