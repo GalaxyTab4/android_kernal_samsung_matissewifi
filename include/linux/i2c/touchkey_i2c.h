@@ -34,6 +34,33 @@ extern int poweroff_charging;
 #include <linux/mutex.h>
 #include <linux/wakelock.h>
 
+#if defined(CONFIG_SEC_K_PROJECT)
+#define CYPRESS_SUPPORT_DUAL_INT_MODE
+#define CYPRESS_RECENT_BACK_REPORT_FW_VER	0x1D
+#define TK_CMD_INTERRUPT_SET_REG		0x00
+#define CYPRESS_DETECTION_FLAG			0x08
+#define TK_CMD_DUAL_DETECTION			0x01
+#define TK_BIT_DETECTION_CONFIRM		0xEE
+#elif defined(CONFIG_SEC_H_PROJECT)
+#define CYPRESS_SUPPORT_DUAL_INT_MODE
+#define CYPRESS_RECENT_BACK_REPORT_FW_VER	0x12
+#define TK_CMD_INTERRUPT_SET_REG		0x18
+#define CYPRESS_DETECTION_FLAG			0x1B
+#define TK_CMD_DUAL_DETECTION			0x01
+#define TK_BIT_DETECTION_CONFIRM		0xEE
+#elif defined(CONFIG_SEC_KLIMT_PROJECT)
+#define CYPRESS_SUPPORT_DUAL_INT_MODE
+#define CYPRESS_RECENT_BACK_REPORT_FW_VER	0x09
+#define TK_CMD_INTERRUPT_SET_REG		0x18
+#define CYPRESS_DETECTION_FLAG			0x1B
+#define TK_CMD_DUAL_DETECTION			0x01
+#define TK_BIT_DETECTION_CONFIRM		0xEE
+#define CRC_CHECK_DELAY
+#else
+#undef CYPRESS_SUPPORT_DUAL_INT_MODE
+#define CYPRESS_RECENT_BACK_REPORT_FW_VER	0xFF
+#endif
+
 #if defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY)
 /* Touchkey Register */
 #define CYPRESS_GEN			0X00
@@ -70,7 +97,7 @@ extern int poweroff_charging;
 #define CYPRESS_BASE_DATA_BACK_INNER	0x2C
 #define CYPRESS_DATA_UPDATE		0X40
 
-#elif defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_H) || defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_C)
+#elif defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_H) || defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_C) || defined (CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_HE)
 #define CYPRESS_GEN		0X00
 #define CYPRESS_FW_VER		0X01
 #define CYPRESS_MODULE_VER	0X02
@@ -108,7 +135,7 @@ extern int poweroff_charging;
 #define TK_BIT_WRITE_CONFIRM	0xAA
 
 /* STATUS FLAG */
-#if defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_H) || defined (CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_C)
+#if defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_H) || defined (CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_C) || defined (CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_HE)
 #define TK_BIT_AUTOCAL		0x80
 #define TK_BIT_GLOVE		0x40
 #define TK_BIT_TA_ON		0x10
@@ -142,6 +169,10 @@ extern int poweroff_charging;
 
 
 #define CONFIG_GLOVE_TOUCH
+#ifdef CONFIG_GLOVE_TOUCH
+#define	TKEY_GLOVE_DWORK_TIME	300
+#endif
+
 /* Flip cover*/
 #define TKEY_FLIP_MODE
 /* 1MM stylus */
@@ -151,7 +182,7 @@ extern int poweroff_charging;
 #if defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY) && \
 	!defined(CONFIG_EXTCON)
 #define TK_INFORM_CHARGER
-#elif defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_H) || defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_C)
+#elif defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_H) || defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_C) || defined (CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_HE)
 #undef TK_INFORM_CHARGER
 #endif
 
@@ -187,16 +218,23 @@ enum {
 
 #define TKEY_SEMCO_CYPRESS_FW_NAME	"semco_cypress_tkey"
 #define TKEY_SEMCO02_CYPRESS_FW_NAME	"semco02_cypress_tkey"
+#define TKEY_SEMCO04_CYPRESS_FW_NAME	"semco04_cypress_tkey"
 #define TKEY_DTECH_CYPRESS_FW_NAME	"dtech_cypress_tkey"
 
+#ifdef CONFIG_MACH_JS01LTEDCM
+#define TKEY_CORERIVER_FW_NAME      "hltejs01_coreriver_tkey"
+#define TKEY_CYPRESS_FW_NAME        "hltejs01_cypress_tkey"
+#else
 #define TKEY_CORERIVER_FW_NAME		"hlte_coreriver_tkey"
 #if defined(CONFIG_SEC_BERLUTI_PROJECT)
 #define TKEY_CYPRESS_FW_NAME		"berluti_cypress_tkey"
-#elif defined(CONFIG_MACH_FRESCOLTESKT)||defined(CONFIG_MACH_FRESCOLTEKTT)||defined(CONFIG_MACH_FRESCOLTELGT)
-#define TKEY_CYPRESS_FW_NAME		"fresco_cypress_tkey"
+#elif defined(CONFIG_SEC_KLIMT_PROJECT)
+#define TKEY_CYPRESS_FW_NAME		"klimt_cypress_tkey"
 #else
 #define TKEY_CYPRESS_FW_NAME		"hlte_cypress_tkey"
 #endif
+#endif
+
 enum {
 	FW_BUILT_IN = 0,
 	FW_IN_SDCARD,
@@ -209,7 +247,7 @@ struct fw_image {
 	u16 second_fw_ver;
 	u16 third_ver;
 	u32 fw_len;
-#ifdef CONFIG_SEC_K_PROJECT
+#if defined(CONFIG_SEC_K_PROJECT) || defined(CONFIG_SEC_S_PROJECT) || defined(CONFIG_SEC_PATEK_PROJECT) || defined(CONFIG_SEC_KLIMT_PROJECT)
 	u16 checksum;
 	u16 alignment_dummy;
 #endif
@@ -218,6 +256,12 @@ struct fw_image {
 #else
 
 #define BIN_FW_VERSION	0
+#endif
+
+/* Divide model */
+#if defined(CONFIG_SEC_KLIMT_PROJECT)
+#define USE_SW_I2C // only use sw i2c line
+#define ENABLE_FW_UPDATE //fw update after dtsi 02
 #endif
 
 struct cypress_touchkey_platform_data {
@@ -230,6 +274,7 @@ struct cypress_touchkey_platform_data {
 	void	(*register_cb)(void *);
 	bool i2c_pull_up;
 	bool vcc_flag;
+	bool fw_update_flag;
 	int gpio_int;
 	u32 irq_gpio_flags;
 	int gpio_sda;
@@ -239,6 +284,7 @@ struct cypress_touchkey_platform_data {
 	int gpio_touchkey_id;
 	u32	gpio_touchkey_id_flags;
 	int vdd_led;
+	int vcc_en;
 };
 
 struct cypress_touchkey_info {
@@ -256,8 +302,14 @@ struct cypress_touchkey_info {
 	struct regulator *vcc_en;
 	struct regulator *vdd_led;
 #ifdef CONFIG_GLOVE_TOUCH
+#if defined(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY)
+	struct delayed_work	glove_work;
+	struct mutex	tkey_glove_lock;
+#else
 	struct workqueue_struct		*glove_wq;
 	struct work_struct		glove_work;
+#endif
+	int glove_value;
 #endif
 #ifdef USE_TKEY_UPDATE_WORK
 	struct workqueue_struct	*fw_wq;
@@ -298,9 +350,7 @@ struct cypress_touchkey_info {
 	int	module_ver;
 	int	device_ver;	
 	u32 fw_id;
-#ifdef CONFIG_GLOVE_TOUCH
-	int glove_value;
-#endif
+
 	u8	touchkeyid;
 	bool	support_fw_update;
 	bool	do_checksum;
@@ -311,6 +361,20 @@ struct cypress_touchkey_info {
 void touchkey_charger_infom(bool en);
 #endif
 
+/* TKEY MODULE 0x6 */
+#if defined(CONFIG_MACH_KLTE_EUR) || defined(CONFIG_MACH_KWIFI_LDU)
+#define TKEY_MODULE_CHECK_REV		0xA
+#elif defined(CONFIG_MACH_KLTE_ATT) || defined(CONFIG_MACH_KLTE_AUS_TEL)
+#define TKEY_MODULE_CHECK_REV		0xE
+#elif defined(CONFIG_MACH_KLTE_CHN) || defined(CONFIG_MACH_KLTE_KOR) || defined(CONFIG_MACH_KLTE_JPN) \
+	|| defined(CONFIG_MACH_KLTE_SPR) || defined(CONFIG_MACH_KLTE_VZW) || defined(CONFIG_MACH_KLTE_LRA) \
+	|| defined(CONFIG_MACH_KLTE_TMO) || defined(CONFIG_MACH_KLTE_CAN) || defined(CONFIG_MACH_KLTE_MTR) \
+	|| defined(CONFIG_MACH_KLTE_USC) || defined(CONFIG_MACH_KLTE_ACG) || defined(CONFIG_MACH_K3GDUOS_CTC)
+#define TKEY_MODULE_CHECK_REV		0x9
+#else
+#define TKEY_MODULE_CHECK_REV		0xFF
+#endif
+
 extern int coreriver_fw_update(struct cypress_touchkey_info *info, bool force);
 
 #define PM8921_IRQ_BASE			(NR_MSM_IRQS + NR_GPIO_IRQS)
@@ -318,6 +382,10 @@ extern int coreriver_fw_update(struct cypress_touchkey_info *info, bool force);
 #define GPIO_TOUCHKEY_SDA	22
 #define GPIO_TOUCHKEY_SCL	23
 #define PMIC_GPIO_TKEY_INT	49
+#elif defined(CONFIG_SEC_KLIMT_PROJECT)
+#define GPIO_TOUCHKEY_SDA	10
+#define GPIO_TOUCHKEY_SCL	11
+#define GPIO_TKEY_INT	144
 #else
 #define GPIO_TOUCHKEY_SDA	95
 #define GPIO_TOUCHKEY_SCL	96

@@ -31,23 +31,27 @@ extern "C" {
 
 /* #define BBM_I2C_SPI */
 #define BBM_I2C_TSIF
-/* #define BBM_INT_LOW_ACTIVE */
+#define BBM_INT_LOW_ACTIVE
 /* #define BBM_AUX_INT */
 #define BBM_NULL_PID_FILTER
 /* #define BBM_FAIL_FRAME */
 /* #define BBM_TS_204 */
 /* #define BBM_2_DIVERSITY */
 /* #define BBM_4_DIVERSITY */
+/* #define BBM_DESCRAMBLER */
+/* #define BBM_SPI_30M */ /* ONLY CS */
+/* #define BBM_I2C_PARALLEL_TSIF */
 #define BBM_ES /* deprecated */
 /* #define BBM_ES_CURRENT */ /* deprecated */
 
+/* From TRLTE onwards, the frequency value is set at run-time during probe of fc8300 */
 /* #define BBM_XTAL_FREQ               16000 */
 /* #define BBM_XTAL_FREQ               16384 */
 /* #define BBM_XTAL_FREQ               18000 */
 /*#define BBM_XTAL_FREQ               19200 */
 /* #define BBM_XTAL_FREQ               24000 */
 /* #define BBM_XTAL_FREQ               24576 */
- #define BBM_XTAL_FREQ               26000 
+/* #define BBM_XTAL_FREQ               26000 */
 /* #define BBM_XTAL_FREQ               27000 */
 /* #define BBM_XTAL_FREQ               27120 */
 /* #define BBM_XTAL_FREQ               32000 */

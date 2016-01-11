@@ -29,9 +29,11 @@
 #include "msm.h"
 #include "msm_vb2.h"
 #include "msm_sd.h"
+#include <media/msmb_generic_buf_mgr.h>
 
 static struct v4l2_device *msm_v4l2_dev;
 static struct list_head    ordered_sd_list;
+static struct pm_qos_request msm_v4l2_pm_qos_request;
 
 static struct msm_queue_head *msm_session_q;
 
@@ -192,6 +194,19 @@ static inline int __msm_queue_find_command_ack_q(void *d1, void *d2)
 	return (ack->stream_id == *(unsigned int *)d2) ? 1 : 0;
 }
 
+static void msm_pm_qos_add_request(void)
+{
+    pm_qos_add_request(&msm_v4l2_pm_qos_request, PM_QOS_CPU_DMA_LATENCY,
+        PM_QOS_DEFAULT_VALUE);
+}
+static void msm_pm_qos_remove_request(void)
+{
+    pm_qos_remove_request(&msm_v4l2_pm_qos_request);
+}
+void msm_pm_qos_update_request(int val)
+{
+    pm_qos_update_request(&msm_v4l2_pm_qos_request, val);
+}
 
 struct msm_session *msm_session_find(unsigned int session_id)
 {
@@ -324,11 +339,15 @@ static void msm_add_sd_in_position(struct msm_sd_subdev *msm_subdev,
 
 int msm_sd_register(struct msm_sd_subdev *msm_subdev)
 {
-	if (WARN_ON(!msm_subdev))
+	if (WARN_ON(!msm_subdev)) {
+		pr_err("FAILED -1\n");
 		return -EINVAL;
+        } 
 
-	if (WARN_ON(!msm_v4l2_dev) || WARN_ON(!msm_v4l2_dev->dev))
+	if (WARN_ON(!msm_v4l2_dev) || WARN_ON(!msm_v4l2_dev->dev)) {
+		pr_err("FAILED -1\n");
 		return -EIO;
+        }
 
 	msm_add_sd_in_position(msm_subdev, &ordered_sd_list);
 	return __msm_sd_register_subdev(&msm_subdev->sd);
@@ -524,6 +543,7 @@ static void msm_remove_session_cmd_ack_q(struct msm_session *session)
 int msm_destroy_session(unsigned int session_id)
 {
 	struct msm_session *session;
+	struct v4l2_subdev *buf_mgr_subdev;
 
 	session = msm_queue_find(msm_session_q, struct msm_session,
 		list, __msm_queue_find_session, &session_id);
@@ -537,6 +557,12 @@ int msm_destroy_session(unsigned int session_id)
 	mutex_destroy(&session->lock);
 	msm_delete_entry(msm_session_q, struct msm_session,
 		list, session);
+	buf_mgr_subdev = msm_buf_mngr_get_subdev();
+	if (buf_mgr_subdev) {
+		v4l2_subdev_call(buf_mgr_subdev, core, ioctl,
+				MSM_SD_SHUTDOWN, NULL);
+	} else
+		pr_err("%s: Buff manger device node is NULL\n", __func__);
 
 	pr_warn("%s : Succeed", __func__);
 
@@ -677,19 +703,16 @@ static unsigned int msm_poll(struct file *f,
 
 	return rc;
 }
-
 static void msm_print_event_error(struct v4l2_event *event)
 {
 	struct msm_v4l2_event_data *event_data =
-		(struct msm_v4l2_event_data *)&event->u.data[0];
-
+	(struct msm_v4l2_event_data *)&event->u.data[0];
 	pr_err("Evt_type=%x Evt_id=%d Evt_cmd=%x\n", event->type,
 		event->id, event_data->command);
 	pr_err("Evt_session_id=%d Evt_stream_id=%d Evt_arg=%d\n",
-		event_data->session_id, event_data->stream_id,
-		event_data->arg_value);
+	event_data->session_id, event_data->stream_id,
+				event_data->arg_value);
 }
-
 /* something seriously wrong if msm_close is triggered
  *   !!! user space imaging server is shutdown !!!
  */
@@ -704,6 +727,11 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 	struct msm_command *cmd;
 	int session_id, stream_id;
 	unsigned long flags = 0;
+#if defined(CONFIG_MACH_MATISSE3G_OPEN) 
+    unsigned long timeout_jiffies = jiffies + msecs_to_jiffies(timeout);
+#else
+    int wait_count = 2000;
+#endif
 
 	session_id = event_data->session_id;
 	stream_id = event_data->stream_id;
@@ -742,16 +770,46 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 		pr_err("%s:%d failed\n", __func__, __LINE__);
 		return rc;
 	}
-
-	do { //Apply QC patch for msm_post_event failure
-	/* should wait on session based condition */
-	rc = wait_event_interruptible_timeout(cmd_ack->wait,
-		!list_empty_careful(&cmd_ack->command_q.list),
+#if defined(CONFIG_MACH_MATISSE3G_OPEN) 
+		do {
+		/* should wait on session based condition for temp. */
+		rc = wait_event_interruptible_timeout(cmd_ack->wait, !list_empty_careful(&cmd_ack->command_q.list), msecs_to_jiffies(timeout));
+		if (rc != -ERESTARTSYS)
+			break;
+	
+		if (time_after_eq(jiffies, timeout_jiffies)) {
+			rc = -ERESTARTSYS;
+			break;
+		}
+		else
+			timeout = jiffies_to_msecs(timeout_jiffies-jiffies);
+		} while(1);
+	
+		if (list_empty_careful(&cmd_ack->command_q.list)) {
+			pr_err("%s:%d failed (rc = %d)\n", __func__, __LINE__, rc);
+			if (!rc) {
+				pr_err("%s: Timed out\n", __func__);
+				msm_print_event_error(event);
+				rc = -ERESTARTSYS;
+			}
+			if (rc < 0) {
+				msm_print_event_error(event);
+				pr_err("%s:%d failed\n", __func__, __LINE__);
+				mutex_unlock(&session->lock);
+				return rc;
+			}
+		}
+#else
+	do {
+		rc = wait_event_interruptible_timeout(cmd_ack->wait,
+			!list_empty_careful(&cmd_ack->command_q.list),
 		msecs_to_jiffies(timeout));
+		wait_count--;
 		if(rc != -ERESTARTSYS)
 			break;
-		pr_err("%s:%d retry wait_event_interruptible_timeout ERESTARTSYS\n", __func__, __LINE__);
-	} while(1);
+		pr_err("%s:%d retry wait_event_interruptible_timeout ERESTARTSYS, remain_count : %d\n", __func__, __LINE__, wait_count);
+		usleep(1000); /* wait for 2ms */
+	} while(wait_count > 0);
 
 	if (list_empty_careful(&cmd_ack->command_q.list)) {
 		pr_err("%s:%d failed (rc = %d)\n", __func__, __LINE__, rc);
@@ -760,14 +818,14 @@ int msm_post_event(struct v4l2_event *event, int timeout)
 			msm_print_event_error(event);
 			rc = -ETIMEDOUT;
 		}
-		if (rc < 0) {
+	if (rc < 0) {
 			msm_print_event_error(event);
 			pr_err("%s:%d failed\n", __func__, __LINE__);
 			mutex_unlock(&session->lock);
 			return rc;
 		}
 	}
-
+#endif
 	cmd = msm_dequeue(&cmd_ack->command_q,
 		struct msm_command, list);
 	if (!cmd) {
@@ -805,6 +863,8 @@ static int msm_close(struct file *filep)
 		list_for_each_entry(msm_sd, &ordered_sd_list, list)
 			__msm_sd_close_subdevs(msm_sd, &sd_close);
 	pr_err("%s __dbg: \n", __func__);  //QC_Patch
+	/* remove msm_v4l2_pm_qos_request */
+	msm_pm_qos_remove_request();
 	/* send v4l2_event to HAL next*/
 	msm_queue_traverse_action(msm_session_q, struct msm_session, list,
 		__msm_close_destry_session_notify_apps, NULL);
@@ -865,6 +925,8 @@ static int msm_open(struct file *filep)
 	spin_unlock_irqrestore(&msm_eventq_lock, flags);
 
 	pr_warn("%s : Succeed!", __func__);
+	/* register msm_v4l2_pm_qos_request */
+	msm_pm_qos_add_request();
 
 	return rc;
 }

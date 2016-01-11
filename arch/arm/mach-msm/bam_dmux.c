@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -65,7 +65,7 @@ module_param_named(max_sleep, POLLING_MAX_SLEEP,
 static int POLLING_INACTIVITY = 1;
 module_param_named(inactivity, POLLING_INACTIVITY,
 		   int, S_IRUGO | S_IWUSR | S_IWGRP);
-static int bam_adaptive_timer_enabled = 0;
+static int bam_adaptive_timer_enabled;
 module_param_named(adaptive_timer_enabled,
 			bam_adaptive_timer_enabled,
 		   int, S_IRUGO | S_IWUSR | S_IWGRP);
@@ -233,7 +233,7 @@ static struct srcu_struct bam_dmux_srcu;
 /* A2 power collaspe */
 #define UL_TIMEOUT_DELAY 1000	/* in ms */
 #define ENABLE_DISCONNECT_ACK	0x1
-#define SHUTDOWN_TIMEOUT_MS	500
+#define SHUTDOWN_TIMEOUT_MS	3000
 #define UL_WAKEUP_TIMEOUT_MS	2000
 static void toggle_apps_ack(void);
 static void reconnect_to_bam(void);
@@ -2582,7 +2582,7 @@ static ssize_t show_waketime(struct device *dev,
 	if (!bamDmux_pkt_dev)
 		return 0;
 
-	return sprintf(buf, "%u\n", wakelock_timeout);
+	return snprintf(buf, PAGE_SIZE, "%u\n", wakelock_timeout);
 }
 
 static ssize_t store_waketime(struct device *dev,
@@ -2630,7 +2630,8 @@ static int __init bam_dmux_init(void)
 			__func__, dev_attr_waketime.attr.name);
 #endif
 
-	bam_ipc_log_txt = ipc_log_context_create(BAM_IPC_LOG_PAGES, "bam_dmux");
+	bam_ipc_log_txt = ipc_log_context_create(BAM_IPC_LOG_PAGES, "bam_dmux",
+			0);
 	if (!bam_ipc_log_txt) {
 		pr_err("%s : unable to create IPC Logging Context", __func__);
 	}

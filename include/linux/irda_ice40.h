@@ -57,16 +57,13 @@ struct irda_ice40_platform_data {
 #define IRDA_I2C_RX_ADDR	0x6C
 #define IRDA_TEST_CODE_SIZE	144
 #define IRDA_TEST_CODE_ADDR	0x00
-#define MAX_SIZE		2048
+#define MAX_SIZE		4096
 #define READ_LENGTH		8
 
 #define POWER_ON		1
 #define POWER_OFF		0
 #define SEND_SUCCESS		0
 #define SEND_FAIL		-1
-
-#define TIME_LIMIT_MSEC 300
-#define tm(time) (u32)ktime_to_us(time)
 
 enum irda_tx_register_map {
 	IRDA_REG_LENGTH_MSB,

@@ -852,7 +852,7 @@ static int audit_filter_rules(struct task_struct *tsk,
 static enum audit_state audit_filter_task(struct task_struct *tsk, char **key)
 {
 	struct audit_entry *e;
-	enum audit_state   state = 0;
+	enum audit_state   state;
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(e, &audit_filter_list[AUDIT_FILTER_TASK], list) {
@@ -868,6 +868,22 @@ static enum audit_state audit_filter_task(struct task_struct *tsk, char **key)
 	return AUDIT_BUILD_CONTEXT;
 }
 
+static bool audit_in_mask(const struct audit_krule *rule, unsigned long val)
+{
+	int word, bit;
+
+	if (val > 0xffffffff)
+		return false;
+
+	word = AUDIT_WORD(val);
+	if (word >= AUDIT_BITMASK_SIZE)
+		return false;
+
+	bit = AUDIT_BIT(val);
+
+	return rule->mask[word] & bit;
+}
+
 /* At syscall entry and exit time, this filter is called if the
  * audit_state is not low enough that auditing cannot take place, but is
  * also not high enough that we already know we have to write an audit
@@ -878,18 +894,15 @@ static enum audit_state audit_filter_syscall(struct task_struct *tsk,
 					     struct list_head *list)
 {
 	struct audit_entry *e;
-	enum audit_state state = 0;
+	enum audit_state state;
 
 	if (audit_pid && tsk->tgid == audit_pid)
 		return AUDIT_DISABLED;
 
 	rcu_read_lock();
 	if (!list_empty(list)) {
-		int word = AUDIT_WORD(ctx->major);
-		int bit  = AUDIT_BIT(ctx->major);
-
 		list_for_each_entry_rcu(e, list, list) {
-			if ((e->rule.mask[word] & bit) == bit &&
+			if (audit_in_mask(&e->rule, ctx->major) &&
 			    audit_filter_rules(tsk, &e->rule, ctx, NULL,
 					       &state, false)) {
 				rcu_read_unlock();
@@ -909,20 +922,16 @@ static enum audit_state audit_filter_syscall(struct task_struct *tsk,
 static int audit_filter_inode_name(struct task_struct *tsk,
 				   struct audit_names *n,
 				   struct audit_context *ctx) {
-	int word, bit;
 	int h = audit_hash_ino((u32)n->ino);
 	struct list_head *list = &audit_inode_hash[h];
 	struct audit_entry *e;
-	enum audit_state state = 0;
-
-	word = AUDIT_WORD(ctx->major);
-	bit  = AUDIT_BIT(ctx->major);
+	enum audit_state state;
 
 	if (list_empty(list))
 		return 0;
 
 	list_for_each_entry_rcu(e, list, list) {
-		if ((e->rule.mask[word] & bit) == bit &&
+		if (audit_in_mask(&e->rule, ctx->major) &&
 		    audit_filter_rules(tsk, &e->rule, ctx, n, &state, false)) {
 			ctx->current_state = state;
 			return 1;
@@ -1075,7 +1084,7 @@ static inline struct audit_context *audit_alloc_context(enum audit_state state)
 int audit_alloc(struct task_struct *tsk)
 {
 	struct audit_context *context;
-	enum audit_state     state = 0;
+	enum audit_state     state;
 	char *key = NULL;
 
 	if (likely(!audit_ever_enabled))
@@ -1606,48 +1615,52 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 	context->fsgid = cred->fsgid;
 	context->personality = tsk->personality;
 
-	ab = audit_log_start(context, GFP_KERNEL, AUDIT_SYSCALL);
-	if (!ab)
-		return;		/* audit_panic has been called */
-	audit_log_format(ab, "arch=%x syscall=%d",
-			 context->arch, context->major);
-	if (context->personality != PER_LINUX)
-		audit_log_format(ab, " per=%lx", context->personality);
-	if (context->return_valid)
-		audit_log_format(ab, " success=%s exit=%ld",
-				 (context->return_valid==AUDITSC_SUCCESS)?"yes":"no",
-				 context->return_code);
+	if (context->major != 294) /* __NR_setsockopt */
+	{
+		ab = audit_log_start(context, GFP_KERNEL, AUDIT_SYSCALL);
+		if (!ab)
+			return;		/* audit_panic has been called */
+		audit_log_format(ab, "arch=%x syscall=%d",
+				 context->arch, context->major);
+		if (context->personality != PER_LINUX)
+			audit_log_format(ab, " per=%lx", context->personality);
+		if (context->return_valid)
+			audit_log_format(ab, " success=%s exit=%ld",
+					 (context->return_valid==AUDITSC_SUCCESS)?"yes":"no",
+					 context->return_code);
 
-	spin_lock_irq(&tsk->sighand->siglock);
-	if (tsk->signal && tsk->signal->tty && tsk->signal->tty->name)
-		tty = tsk->signal->tty->name;
-	else
-		tty = "(none)";
-	spin_unlock_irq(&tsk->sighand->siglock);
+		spin_lock_irq(&tsk->sighand->siglock);
+		if (tsk->signal && tsk->signal->tty && tsk->signal->tty->name)
+			tty = tsk->signal->tty->name;
+		else
+			tty = "(none)";
+		spin_unlock_irq(&tsk->sighand->siglock);
 
-	audit_log_format(ab,
-		  " a0=%lx a1=%lx a2=%lx a3=%lx items=%d"
-		  " ppid=%d pid=%d auid=%u uid=%u gid=%u"
-		  " euid=%u suid=%u fsuid=%u"
-		  " egid=%u sgid=%u fsgid=%u tty=%s ses=%u",
-		  context->argv[0],
-		  context->argv[1],
-		  context->argv[2],
-		  context->argv[3],
-		  context->name_count,
-		  context->ppid,
-		  context->pid,
-		  tsk->loginuid,
-		  context->uid,
-		  context->gid,
-		  context->euid, context->suid, context->fsuid,
-		  context->egid, context->sgid, context->fsgid, tty,
-		  tsk->sessionid);
+		audit_log_format(ab,
+			  " a0=%lx a1=%lx a2=%lx a3=%lx items=%d"
+			  " ppid=%d ppcomm=%s pid=%d auid=%u uid=%u gid=%u"
+			  " euid=%u suid=%u fsuid=%u"
+			  " egid=%u sgid=%u fsgid=%u tty=%s ses=%u",
+			  context->argv[0],
+			  context->argv[1],
+			  context->argv[2],
+			  context->argv[3],
+			  context->name_count,
+			  context->ppid,
+			  tsk->parent->comm,
+			  context->pid,
+			  tsk->loginuid,
+			  context->uid,
+			  context->gid,
+			  context->euid, context->suid, context->fsuid,
+			  context->egid, context->sgid, context->fsgid, tty,
+			  tsk->sessionid);
 
 
-	audit_log_task_info(ab, tsk);
-	audit_log_key(ab, context->filterkey);
-	audit_log_end(ab);
+		audit_log_task_info(ab, tsk);
+		audit_log_key(ab, context->filterkey);
+		audit_log_end(ab);
+	}
 
 	for (aux = context->aux; aux; aux = aux->next) {
 
@@ -1792,7 +1805,7 @@ void __audit_syscall_entry(int arch, int major,
 {
 	struct task_struct *tsk = current;
 	struct audit_context *context = tsk->audit_context;
-	enum audit_state     state = 0;
+	enum audit_state     state;
 
 	if (!context)
 		return;

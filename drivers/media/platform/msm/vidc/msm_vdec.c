@@ -21,8 +21,8 @@
 
 #define MSM_VDEC_DVC_NAME "msm_vdec_8974"
 #define MIN_NUM_OUTPUT_BUFFERS 4
-#define MAX_NUM_OUTPUT_BUFFERS 6
-#define DEFAULT_VIDEO_CONCEAL_COLOR_BLACK 0x8080
+#define MAX_NUM_OUTPUT_BUFFERS VB2_MAX_FRAME
+#define DEFAULT_VIDEO_CONCEAL_COLOR_BLACK 0x8010
 #define MB_SIZE_IN_PIXEL (16 * 16)
 
 #define TZ_DYNAMIC_BUFFER_FEATURE_ID 12
@@ -316,26 +316,6 @@ static struct msm_vidc_ctrl msm_vdec_ctrls[] = {
 		.maximum = 0xffffff,
 		.default_value = DEFAULT_VIDEO_CONCEAL_COLOR_BLACK,
 		.step = 1,
-	},
-	{
-		.id = V4L2_CID_MPEG_VIDC_VIDEO_PRIORITY,
-		.name = "Session Priority",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.minimum = V4L2_MPEG_VIDC_VIDEO_PRIORITY_REALTIME_ENABLE,
-		.maximum = V4L2_MPEG_VIDC_VIDEO_PRIORITY_REALTIME_DISABLE,
-		.default_value = V4L2_MPEG_VIDC_VIDEO_PRIORITY_REALTIME_DISABLE,
-		.step = 1,
-		.qmenu = NULL,
-	},
-	{
-		.id = V4L2_CID_MPEG_VIDC_VIDEO_OPERATING_RATE,
-		.name = "Set Decoder Operating rate",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.minimum = 0,
-		.maximum = 300 << 16,  /* 300 fps in Q16 format*/
-		.default_value = 0,
-		.step = 1,
-		.qmenu = NULL,
 	},
 	{
 		.id = V4L2_CID_MPEG_VIDC_VIDEO_BUFFER_SIZE_LIMIT,
@@ -726,7 +706,7 @@ int msm_vdec_reqbufs(struct msm_vidc_inst *inst, struct v4l2_requestbuffers *b)
 	rc = vb2_reqbufs(&q->vb2_bufq, b);
 	mutex_unlock(&q->lock);
 	if (rc)
-		dprintk(VIDC_DBG, "Failed to get reqbufs, %d\n", rc);
+		dprintk(VIDC_ERR, "Failed to get reqbufs, %d\n", rc);
 	return rc;
 }
 
@@ -948,15 +928,12 @@ int msm_vdec_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 	int i;
 	struct hal_buffer_requirements *buff_req_buffer;
 	int max_input_size = 0;
-	struct hfi_device *hdev;
 
-	if (!inst || !f || !inst->core || !inst->core->device) {
-		dprintk(VIDC_ERR, "%s invalid parameters\n", __func__);
+	if (!inst || !f) {
+		dprintk(VIDC_ERR,
+			"Invalid input, inst = %p, format = %p\n", inst, f);
 		return -EINVAL;
 	}
-
-	hdev = inst->core->device;
-
 	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 
 		fmt = msm_comm_get_pixel_fmt_fourcc(vdec_formats,
@@ -1047,13 +1024,11 @@ int msm_vdec_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 			rc = -EINVAL;
 			goto err_invalid_fmt;
 		}
-
 		rc = msm_comm_try_state(inst, MSM_VIDC_CORE_INIT_DONE);
 		if (rc) {
 			dprintk(VIDC_ERR, "Failed to initialize instance\n");
 			goto err_invalid_fmt;
 		}
-
 		if (!(get_hal_codec_type(fmt->fourcc) &
 			inst->core->dec_codec_supported)) {
 			dprintk(VIDC_ERR,
@@ -1761,14 +1736,6 @@ static int try_set_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 		property_val = ctrl->val;
 		pdata = &property_val;
 		break;
-	case V4L2_CID_MPEG_VIDC_VIDEO_PRIORITY:
-		property_id = HAL_CONFIG_REALTIME;
-		hal_property.enable = ctrl->val;
-		pdata = &hal_property;
-		break;
-	case V4L2_CID_MPEG_VIDC_VIDEO_OPERATING_RATE:
-		property_id = 0;
-		break;
 	case V4L2_CID_MPEG_VIDC_VIDEO_BUFFER_SIZE_LIMIT:
 	{
 		inst->capability.buffer_size_limit = ctrl->val;
@@ -1857,7 +1824,11 @@ static struct v4l2_ctrl **get_super_cluster(struct msm_vidc_inst *inst,
 			NUM_CTRLS, GFP_KERNEL);
 
 	if (!size || !cluster || !inst)
+	{
+		if(cluster) 
+			kfree(cluster); // PREVENT Resouce leak fix
 		return NULL;
+	}
 
 	for (c = 0; c < NUM_CTRLS; c++)
 		cluster[sz++] = inst->ctrls[c];
@@ -1960,6 +1931,11 @@ int msm_vdec_ctrl_init(struct msm_vidc_inst *inst)
 
 int msm_vdec_ctrl_deinit(struct msm_vidc_inst *inst)
 {
+	if (!inst) {
+		dprintk(VIDC_ERR, "%s invalid parameters\n", __func__);
+		return -EINVAL;
+	}
+
 	kfree(inst->ctrls);
 	kfree(inst->cluster);
 	v4l2_ctrl_handler_free(&inst->ctrl_handler);

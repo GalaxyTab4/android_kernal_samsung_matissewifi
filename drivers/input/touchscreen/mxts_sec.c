@@ -1383,7 +1383,7 @@ static void get_tk_delta(void *device_data)
 		__func__, buff, strnlen(buff, sizeof(buff)));
 }
 
-#ifdef CONFIG_SEC_LT03_PROJECT
+#ifdef WORKAROUND_THRESHOLD
 bool set_threshold(void *device_data)
 {
 	struct mxt_data *data = (struct mxt_data *)device_data;
@@ -1458,15 +1458,18 @@ static void set_tk_threshold(void *device_data)
 	struct mxt_fac_data *fdata = data->fdata;
 	char buff[16] = {0};
 	bool command_success;
+	unsigned int revision;
 
 	set_default_result(fdata);
+	
 
-#if defined(CONFIG_MACH_LT03SKT) || defined(CONFIG_MACH_LT03LGT) || defined(CONFIG_MACH_LT03KTT)
-	if (system_rev >= 9) /* All of revision change threshlod of Touch key */
+#ifdef KOR_REVISION
+	revision = 9; /* All of revision change threshold of Touch key */
 #else
-	if (system_rev >= 11)
+	revision = 11;
 #endif
-	{
+
+	if (system_rev >= revision) {
 		dev_info(&client->dev, "%s failed, not suppport[%d] !\n",
 			__func__, system_rev);
 
@@ -1615,7 +1618,7 @@ static struct tsp_cmd tsp_cmds[] = {
 #if ENABLE_TOUCH_KEY
 	{TSP_CMD("get_tk_threshold", get_tk_threshold),},
 	{TSP_CMD("get_tk_delta", get_tk_delta),},
-#ifdef CONFIG_SEC_LT03_PROJECT
+#ifdef WORKAROUND_THRESHOLD
 	{TSP_CMD("set_tk_threshold", set_tk_threshold),},
 #endif
 #endif
@@ -1650,6 +1653,16 @@ static ssize_t store_cmd(struct device *dev, struct device_attribute
 		goto err_out;
 	}
 
+	len = (int)count;
+	if (*(buf + len - 1) == '\n')
+		len--;
+
+/* if wrong cmd is coming */
+	if (len > TSP_CMD_STR_LEN) {
+		dev_info(&client->dev, "%s: length overflow[%d]\n", __func__, len);
+		goto err_out;
+	}
+
 	/* check lock  */
 	mutex_lock(&fdata->cmd_lock);
 	fdata->cmd_is_running = true;
@@ -1660,9 +1673,6 @@ static ssize_t store_cmd(struct device *dev, struct device_attribute
 	for (i = 0; i < ARRAY_SIZE(fdata->cmd_param); i++)
 		fdata->cmd_param[i] = 0;
 
-	len = (int)count;
-	if (*(buf + len - 1) == '\n')
-		len--;
 	memset(fdata->cmd, 0x00, ARRAY_SIZE(fdata->cmd));
 	memcpy(fdata->cmd, buf, len);
 
@@ -2093,25 +2103,6 @@ static ssize_t boost_level_store(struct device *dev,
 }
 #endif
 
-static ssize_t show_tsp_keys_enabled(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	return snprintf(buf, PAGE_SIZE, "%u\n", tsp_keys_enabled);
-}
-
-static ssize_t tsp_keys_enabled_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
-{
-	unsigned int input;
-
-	if (sscanf(buf, "%u", &input) != 1)
-		return -EINVAL;
-
-	tsp_keys_enabled = (input != 0);
-
-	return count;
-}
-
 static DEVICE_ATTR(touchkey_d_menu, S_IRUGO | S_IWUSR | S_IWGRP, touchkey_d_menu_show, NULL);
 static DEVICE_ATTR(touchkey_d_home1, S_IRUGO | S_IWUSR | S_IWGRP, touchkey_d_home1_show, NULL);
 static DEVICE_ATTR(touchkey_d_home2, S_IRUGO | S_IWUSR | S_IWGRP, touchkey_d_home2_show, NULL);
@@ -2129,8 +2120,6 @@ static DEVICE_ATTR(extra_button_event, S_IRUGO | S_IWUSR | S_IWGRP,
 #if MXT_TKEY_BOOSTER
 static DEVICE_ATTR(boost_level, S_IWUSR | S_IWGRP, NULL, boost_level_store);
 #endif
-static DEVICE_ATTR(tsp_keys_enabled, S_IRUGO | S_IWUSR | S_IWGRP,
-			show_tsp_keys_enabled, tsp_keys_enabled_store);
 
 static struct attribute *touchkey_attributes[] = {
 	&dev_attr_touchkey_d_menu.attr,
@@ -2149,7 +2138,6 @@ static struct attribute *touchkey_attributes[] = {
 #if MXT_TKEY_BOOSTER
 	&dev_attr_boost_level.attr,
 #endif
-	&dev_attr_tsp_keys_enabled.attr,
 	NULL,
 };
 
@@ -2641,6 +2629,13 @@ static int mxt_init_factory(struct mxt_data *data)
 	if (error) {
 		dev_err(dev, "Failed to create touchscreen sysfs group\n");
 		goto err_create_group;
+	}
+
+	error = sysfs_create_link(&data->fdata->fac_dev_ts->kobj,
+		&data->input_dev->dev.kobj, "input");
+	if (error < 0) {
+		dev_err(dev, "%s: Failed to create input symbolic link\n",
+			__func__);
 	}
 
 	return 0;

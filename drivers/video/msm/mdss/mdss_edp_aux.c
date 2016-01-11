@@ -1203,10 +1203,16 @@ static int edp_link_rate_down_shift(struct mdss_edp_drv_pdata *ep)
 	prate *= ep->bpp;
 	prate /= 8; /* byte */
 
+#if !defined(CONFIG_FB_MSM_EDP_SAMSUNG)
+	/* 
+		Link rate is fixed to 2.7G for eDP panel.
+	*/
+
 	if (rate > EDP_LINK_RATE_162 && rate <= EDP_LINK_RATE_MAX) {
 		rate -= 4;		/* reduce rate */
 		changed++;
 	}
+#endif	
 
 	if (changed) {
 		if (lane >= 1 && lane < max_lane)
@@ -1236,7 +1242,6 @@ static int edp_link_rate_down_shift(struct mdss_edp_drv_pdata *ep)
 static void edp_clear_training_pattern(struct mdss_edp_drv_pdata *ep)
 {
 	pr_debug("%s:\n", __func__);
-	edp_write(ep->base + EDP_STATE_CTRL, 0);
 	edp_train_pattern_set_write(ep, 0);
 	usleep(ep->dpcd.training_read_interval);
 }
@@ -1265,6 +1270,7 @@ train_start:
 	mdss_edp_config_ctrl(ep);
 	mdss_edp_lane_power_ctrl(ep, 1);
 
+	mdss_edp_state_ctrl(ep, 0);
 	edp_clear_training_pattern(ep);
 	usleep(ep->dpcd.training_read_interval);
 
@@ -1279,6 +1285,10 @@ train_start:
 		}
 	}
 
+
+	pr_debug("%s: Training 1 completed successfully", __func__);
+
+	mdss_edp_state_ctrl(ep, 0);
 	/* recovery_done : 0x1111*/
 	pr_info("%s: Training 1 completed successfully recovery_done : 0x%x", __func__,
 		(ep->link_status.lane_23_status << 8) | ep->link_status.lane_01_status);
@@ -1358,7 +1368,12 @@ int mdss_edp_sink_power_state(struct mdss_edp_drv_pdata *ep, char state)
 
 int mdss_edp_link_train(struct mdss_edp_drv_pdata *ep)
 {
-	return edp_aux_link_train(ep);
+	int ret;
+
+	mutex_lock(&ep->train_mutex);
+	ret = edp_aux_link_train(ep);
+	mutex_unlock(&ep->train_mutex);
+	return ret;
 }
 
 void mdss_edp_aux_setup(struct mdss_edp_drv_pdata *ep)
@@ -1403,6 +1418,47 @@ void tcon_interanl_clock(void)
 
 	data[0] = 0x05; data[1] = 0x33; data[2] = 0x6D;
 	aux_tx(0x491, data, 3);
+}
+#elif defined(CONFIG_MACH_PICASSO_SPR)
+void tcon_interanl_clock(void)
+{
+	/* SPR needs 900Mbps internal clock */
+	char data[3];
+
+	//900Mbps
+	data[0] = 0x03; data[1] = 0xBB; data[2] = 0x26;
+	aux_tx(0x491, data, 3);
+
+	data[0] = 0x05; data[1] = 0x2A; data[2] = 0x28;
+	aux_tx(0x491, data, 3);
+
+	data[0] = 0x05; data[1] = 0x2B; data[2] = 0x43;
+	aux_tx(0x491, data, 3);
+
+	data[0] = 0x05; data[1] = 0x2E; data[2] = 0x28;
+	aux_tx(0x491, data, 3);
+
+	data[0] = 0x05; data[1] = 0x2F; data[2] = 0x43;
+	aux_tx(0x491, data, 3);
+
+	data[0] = 0x05; data[1] = 0x32; data[2] = 0x28;
+	aux_tx(0x491, data, 3);
+
+	data[0] = 0x05; data[1] = 0x33; data[2] = 0x43;
+	aux_tx(0x491, data, 3);
+
+	data[0] = 0x05; data[1] = 0x36; data[2] = 0x28;
+	aux_tx(0x491, data, 3);
+
+	data[0] = 0x05; data[1] = 0x37; data[2] = 0x43;
+	aux_tx(0x491, data, 3);
+
+	data[0] = 0x05; data[1] = 0x46; data[2] = 0x28;
+	aux_tx(0x491, data, 3);
+
+	data[0] = 0x05; data[1] = 0x47; data[2] = 0x43;
+	aux_tx(0x491, data, 3);
+
 }
 #else
 void tcon_interanl_clock(void)
@@ -1454,6 +1510,7 @@ void read_firmware_version(char *string)
 void mdss_edp_aux_init(struct mdss_edp_drv_pdata *ep)
 {
 	mutex_init(&ep->aux_mutex);
+	mutex_init(&ep->train_mutex);
 	init_completion(&ep->aux_comp);
 	init_completion(&ep->train_comp);
 	init_completion(&ep->idle_comp);

@@ -21,10 +21,7 @@
 
 #define SSP_DEBUG_TIMER_SEC		(10 * HZ)
 
-#define LIMIT_RESET_CNT		3000000
-#define LIMIT_SSD_FAIL_CNT		3
-#define LIMIT_INSTRUCTION_FAIL_CNT	1
-#define LIMIT_IRQ_FAIL_CNT		2
+#define LIMIT_RESET_CNT		20
 #define LIMIT_TIMEOUT_CNT		3
 
 #define DUMP_FILE_PATH "/data/log/MCU_DUMP"
@@ -302,10 +299,17 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 			get_msdelay(data->adDelayBuf[uSensor]));
 		break;
 	case GESTURE_SENSOR:
+#if defined (CONFIG_SENSORS_SSP_MAX88921)
+		ssp_dbg("[SSP] %u : %d %d %d %d (%ums)\n", uSensor,
+			data->buf[uSensor].data[0], data->buf[uSensor].data[1],
+			data->buf[uSensor].data[2], data->buf[uSensor].data[3],
+			get_msdelay(data->adDelayBuf[uSensor]));
+#else
 		ssp_dbg("[SSP] %u : %d %d %d %d (%ums)\n", uSensor,
 			data->buf[uSensor].data[3], data->buf[uSensor].data[4],
 			data->buf[uSensor].data[5], data->buf[uSensor].data[6],
 			get_msdelay(data->adDelayBuf[uSensor]));
+#endif
 		break;
 	case TEMPERATURE_HUMIDITY_SENSOR:
 		ssp_dbg("[SSP] %u : %d %d %d(%ums)\n", uSensor,
@@ -363,7 +367,6 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 			data->buf[uSensor].step_diff,
 			get_msdelay(data->adDelayBuf[uSensor]));
 		break;
-
 	default:
 		ssp_dbg("[SSP] Wrong sensorCnt: %u\n", uSensor);
 		break;
@@ -375,22 +378,16 @@ static void debug_work_func(struct work_struct *work)
 	unsigned int uSensorCnt;
 	struct ssp_data *data = container_of(work, struct ssp_data, work_debug);
 
-	ssp_dbg("[SSP]: %s(%u) - Sensor state: 0x%x, RC: %u, MS: %u Dump: %u\n",
+	ssp_dbg("[SSP]: %s(%u) - Sensor state: 0x%x, RC: %u, CC: %u DC: %u TC: %u\n",
 		__func__, data->uIrqCnt, data->uSensorState, data->uResetCnt,
-		data->uMissSensorCnt,data->uDumpCnt);
+		data->uComFailCnt, data->uDumpCnt, data->uTimeOutCnt);
 
-	if (data->fw_dl_state >= FW_DL_STATE_DOWNLOADING &&
-		data->fw_dl_state < FW_DL_STATE_DONE) {
-		pr_info("[SSP] : %s firmware downloading state = %d\n",
-			__func__, data->fw_dl_state);
-		return;
-	} else if (data->fw_dl_state == FW_DL_STATE_FAIL) {
-		pr_err("[SSP] : %s firmware download failed = %d\n",
-			__func__, data->fw_dl_state);
-		return;
-	}
-	if ((data->uSensorState & 0xff) == 0x0){
-		pr_err("[SSP] : %s MCU sensor probe fail\n", __func__);
+	switch (data->fw_dl_state) {
+	case FW_DL_STATE_FAIL:
+	case FW_DL_STATE_DOWNLOADING:
+	case FW_DL_STATE_SYNC:
+		pr_info("[SSP] : %s firmware downloading state = %d\n", __func__,
+				data->fw_dl_state);
 		return;
 	}
 
@@ -399,35 +396,15 @@ static void debug_work_func(struct work_struct *work)
 			|| data->batchLatencyBuf[uSensorCnt])
 			print_sensordata(data, uSensorCnt);
 
-	if ((atomic_read(&data->aSensorEnable) & SSP_BYPASS_SENSORS_EN_ALL)\
-		&& (data->uIrqCnt == 0))
-		data->uIrqFailCnt++;
-	else
-		data->uIrqFailCnt = 0;
-
-	if (((data->uSsdFailCnt >= LIMIT_SSD_FAIL_CNT)
-		|| (data->uInstFailCnt >= LIMIT_INSTRUCTION_FAIL_CNT)
-		|| (data->uIrqFailCnt >= LIMIT_IRQ_FAIL_CNT)
-		|| (data->uTimeOutCnt > LIMIT_TIMEOUT_CNT))
-		&& (data->bSspShutdown == false)
-		&& (data->uLastResumeState != MSG2SSP_AP_STATUS_SUSPEND)) {
-
-		if (data->uResetCnt < LIMIT_RESET_CNT) {
-			wake_lock(&data->ssp_wake_lock);
-			pr_info("[SSP] : %s - uSsdFailCnt(%u), uInstFailCnt(%u),"\
-				"uIrqFailCnt(%u), uTimeOutCnt(%u), pending(%u)\n",
-				__func__, data->uSsdFailCnt, data->uInstFailCnt, data->uIrqFailCnt,
-				data->uTimeOutCnt, !list_empty(&data->pending_list));
+	if (data->uTimeOutCnt > LIMIT_TIMEOUT_CNT) {
+		if (data->uComFailCnt < LIMIT_RESET_CNT) {
+			pr_info("[SSP] : %s - uTimeOutCnt(%u), pending(%u)\n",
+				__func__, data->uTimeOutCnt, !list_empty(&data->pending_list));
+			data->uComFailCnt++;
 			reset_mcu(data);
-			data->uResetCnt++;
-			wake_unlock(&data->ssp_wake_lock);
 		} else
 			ssp_enable(data, false);
-
-		data->uSsdFailCnt = 0;
-		data->uInstFailCnt = 0;
 		data->uTimeOutCnt = 0;
-		data->uIrqFailCnt = 0;
 	}
 
 	data->uIrqCnt = 0;

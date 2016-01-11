@@ -32,16 +32,18 @@
 #include <linux/sec_jack.h>
 #include <linux/of_gpio.h>
 #include <linux/qpnp/qpnp-adc.h>
-#ifdef CONFIG_ARCH_MSM8226
 #include <linux/regulator/consumer.h>
-#endif
 #if defined(CONFIG_MACH_VIENNA) || defined(CONFIG_MACH_PICASSO) || defined(CONFIG_MACH_MONDRIAN) || defined(CONFIG_MACH_LT03) || defined(CONFIG_SEC_H_PROJECT) || defined(CONFIG_SEC_FRESCO_PROJECT)
 #include <linux/qpnp/pin.h>
 #endif
 
 #define NUM_INPUT_DEVICE_ID	2
 #define MAX_ZONE_LIMIT		10
+#ifdef CONFIG_MACH_MILLET3G_CHN_OPEN
+#define SEND_KEY_CHECK_TIME_MS	40		/* 40ms */
+#else
 #define SEND_KEY_CHECK_TIME_MS	30		/* 30ms */
+#endif
 #define DET_CHECK_TIME_MS	   100		/* 100ms */
 #define DET_CHECK_TIME_MS_WITH_FSA 50		/* 50ms */
 #define WAKE_LOCK_TIME		(HZ * 5)	/* 5 sec */
@@ -53,6 +55,8 @@ struct sec_jack_info {
 	struct work_struct buttons_work;
 	struct work_struct detect_work;
 	struct workqueue_struct *queue;
+	struct workqueue_struct *buttons_queue;
+	struct timer_list timer;
 	struct input_dev *input_dev;
 	struct wake_lock det_wake_lock;
 	struct sec_jack_zone *zone;
@@ -63,6 +67,7 @@ struct sec_jack_info {
 	int dev_id;
 	int pressed;
 	int pressed_code;
+	bool buttons_enable;
 	struct platform_device *send_key_dev;
 	unsigned int cur_jack_type;
 };
@@ -164,13 +169,20 @@ static void sec_jack_gpio_init(struct sec_jack_platform_data *pdata)
 		gpio_direction_output(pdata->ear_micbias_gpio, 0);
 	}
 #else
-	ret = gpio_request(pdata->ear_micbias_gpio, "ear_micbias_en");
-	if (ret) {
-		pr_err("%s : gpio_request failed for %d\n", __func__,
+#ifdef CONFIG_MACH_HEAT_AIO
+	gpio_free(pdata->ear_micbias_gpio);
+	pr_err("%s HEAT_AIO: gpio_free for %d\n", __func__,
 			pdata->ear_micbias_gpio);
-		return;
+#endif
+	if (pdata->ear_micbias_gpio > 0) {
+		ret = gpio_request(pdata->ear_micbias_gpio, "ear_micbias_en");
+		if (ret) {
+			pr_err("%s : gpio_request failed for %d\n", __func__,
+				pdata->ear_micbias_gpio);
+			return;
+		}
+		gpio_direction_output(pdata->ear_micbias_gpio, 0);
 	}
-	gpio_direction_output(pdata->ear_micbias_gpio, 0);
 #endif
 
 	if (pdata->fsa_en_gpio > 0) {
@@ -189,8 +201,8 @@ static int sec_jack_get_adc_value(struct sec_jack_info *hi)
 {
 	struct qpnp_vadc_result result;
 	struct sec_jack_platform_data *pdata = hi->pdata;
-	struct qpnp_vadc_chip *earjack_vadc;
 	int retVal;
+	int rc = 0;
 	uint32_t mpp_ch;
 	
 	/* Initialize mpp_ch default setting
@@ -209,14 +221,16 @@ static int sec_jack_get_adc_value(struct sec_jack_info *hi)
 	else
 		pr_err("%s - invalid channel scale=%d\n", __func__, pdata->mpp_ch_scale[2]);
 
-	earjack_vadc = qpnp_get_vadc(&hi->client->dev, "earjack-read");
+	qpnp_get_vadc(&hi->client->dev, "earjack-read");
 
 #ifdef CONFIG_ARCH_MSM8226
 	// Read the MPP4 VADC channel with 1:3 scaling
-	qpnp_vadc_read(pdata->vadc_dev,  mpp_ch, &result);
+	rc = qpnp_vadc_read(pdata->vadc_dev,  mpp_ch, &result);
 #else
-	qpnp_vadc_read(NULL,  mpp_ch, &result);
+	rc = qpnp_vadc_read(NULL,  mpp_ch, &result);
 #endif
+	if(rc)
+		pr_err("%s: qpnp_vadc_read failed: %d\n", __func__, rc);
 	// Get voltage in microvolts
 	retVal = ((int)result.physical)/1000;
 
@@ -228,12 +242,34 @@ static void set_sec_micbias_state(struct sec_jack_info *hi, bool state)
 	struct sec_jack_platform_data *pdata = hi->pdata;
 
 #ifdef CONFIG_ARCH_MSM8226
-        if(pdata->ear_micbias_gpio > 0)
-           gpio_set_value_cansleep(pdata->ear_micbias_gpio, state); /*Uses external Mic Bias*/
-        else
-			msm8226_enable_ear_micbias(state); /* Uses WCD Mic Bias*/
-#else 
-	 gpio_set_value_cansleep(pdata->ear_micbias_gpio, state);	
+	if(pdata->ear_micbias_gpio > 0)
+	   gpio_set_value_cansleep(pdata->ear_micbias_gpio, state); /*Uses external Mic Bias*/
+	else
+		msm8226_enable_ear_micbias(state); /* Uses WCD Mic Bias*/
+#else
+	static struct regulator *ear_micbias_regulator = NULL;
+	static int micbias_state_count = 0;
+	if (pdata->ear_micbias_gpio > 0) {
+		 gpio_set_value_cansleep(pdata->ear_micbias_gpio, state);
+	} else if (pdata->ear_micbias_ldo != NULL) {
+		if (ear_micbias_regulator == NULL) {
+			ear_micbias_regulator = regulator_get(NULL, pdata->ear_micbias_ldo);
+			if (IS_ERR(ear_micbias_regulator)) {
+				ear_micbias_regulator = NULL;
+				pr_err("%s: regulator_get failed for %s\n", __func__, pdata->ear_micbias_ldo);
+				return;
+			}
+			regulator_set_voltage(ear_micbias_regulator, 2800000, 2800000);
+		}
+
+		if (state == true && micbias_state_count == 0) {
+			if (!regulator_enable(ear_micbias_regulator))
+				micbias_state_count = 1;
+		} else if (state == false && micbias_state_count == 1) {
+			if (!regulator_disable(ear_micbias_regulator))
+				micbias_state_count = 0;
+		}
+	}
 #endif
 }
 
@@ -254,7 +290,7 @@ static bool sec_jack_buttons_filter(struct input_handle *handle,
 	/* This is called in timer handler of gpio_input driver.
 	 * We use workqueue to read adc value.
 	 */
-	queue_work(hi->queue, &hi->buttons_work);
+	queue_work(hi->buttons_queue, &hi->buttons_work);
 
 	return true;
 }
@@ -346,12 +382,16 @@ static void sec_jack_set_type(struct sec_jack_info *hi, int jack_type)
 				hi->dev_id,
 				&sec_jack_input_data,
 				sizeof(sec_jack_input_data));
+			mod_timer(&hi->timer,
+				jiffies + msecs_to_jiffies(1000));
 	} else {
 		/* for all other jacks, disable send/end key detection */
 		if (hi->send_key_dev != NULL) {
 			/* disable to prevent false events on next insert */
 			platform_device_unregister(hi->send_key_dev);
 			hi->send_key_dev = NULL;
+			del_timer_sync(&hi->timer);
+			hi->buttons_enable = false;
 		}
 		/* micbias is left enabled for 4pole and disabled otherwise */
 		set_sec_micbias_state(hi, false);
@@ -477,17 +517,201 @@ static ssize_t earjack_state_onoff_show(struct device *dev,
 static DEVICE_ATTR(state, 0664 , earjack_state_onoff_show,
 	NULL);
 
+#if defined (CONFIG_EARJACK_ADC_SYSFS)
+static ssize_t jack_adc_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct sec_jack_info *hi = dev_get_drvdata(dev);
+	int val[4] = {0,};
 
+	val[0] = hi->pdata->jack_zones[0].adc_high;
+	val[1] = hi->pdata->jack_zones[1].adc_high;
+	val[2] = hi->pdata->jack_zones[2].adc_high;
+	val[3] = hi->pdata->jack_zones[3].adc_high;
+
+	return sprintf(buf, "%d %d %d %d\n",val[0],val[1],val[2],val[3]);
+
+}
+
+static ssize_t jack_adc_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+
+	struct sec_jack_info *hi = dev_get_drvdata(dev);
+	char *buffer = (char*)buf;
+	char *token;
+	int val[4] = {0,};
+
+	token = strsep(&buffer, " ");
+	if(kstrtoint(token,0,&val[0]) != 0)
+		return -EINVAL;
+
+	token = strsep(&buffer, " ");
+	if(kstrtoint(token,0,&val[1]) != 0)
+		return -EINVAL;
+
+	token = strsep(&buffer, " ");
+	if(kstrtoint(token,0,&val[2]) != 0)
+		return -EINVAL;
+
+	token = strsep(&buffer, " ");
+	if(kstrtoint(token,0,&val[3]) != 0)
+		return -EINVAL;
+
+	hi->pdata->jack_zones[0].adc_high = val[0];
+	hi->pdata->jack_zones[1].adc_high = val[1];
+	hi->pdata->jack_zones[2].adc_high = val[2];
+	hi->pdata->jack_zones[3].adc_high = val[3];
+
+
+	return count;
+}
+
+
+static DEVICE_ATTR(jack_adc, 0666, jack_adc_show,
+	jack_adc_store);
+
+static ssize_t send_end_btn_adc_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct sec_jack_info *hi = dev_get_drvdata(dev);
+	int val[2]  = {0,};
+
+	val[0] = hi->pdata->jack_buttons_zones[0].adc_low;
+	val[1] = hi->pdata->jack_buttons_zones[0].adc_high;
+
+	return sprintf(buf, "%d %d\n",val[0],val[1]);
+}
+
+static ssize_t send_end_btn_adc_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct sec_jack_info *hi = dev_get_drvdata(dev);
+	char *buffer = (char*)buf;
+	char *token;
+	int val[2] = {0,};
+
+	token = strsep(&buffer, " ");
+	if(kstrtoint(token,0,&val[0]) != 0)
+		return -EINVAL;
+
+	token = strsep(&buffer, " ");
+	if(kstrtoint(token,0,&val[1]) != 0)
+		return -EINVAL;
+
+	hi->pdata->jack_buttons_zones[0].adc_low = val[0];
+	hi->pdata->jack_buttons_zones[0].adc_high = val[1];
+
+	return count;
+}
+
+
+static DEVICE_ATTR(send_end_btn_adc, 0666, send_end_btn_adc_show,
+	send_end_btn_adc_store);
+
+static ssize_t vol_up_btn_adc_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct sec_jack_info *hi = dev_get_drvdata(dev);
+	int val[2]  = {0,};
+
+	val[0] = hi->pdata->jack_buttons_zones[1].adc_low;
+	val[1] = hi->pdata->jack_buttons_zones[1].adc_high;
+
+	return sprintf(buf, "%d %d\n",val[0],val[1]);
+}
+
+static ssize_t vol_up_btn_adc_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct sec_jack_info *hi = dev_get_drvdata(dev);
+	char *buffer = (char*)buf;
+	char *token;
+	int val[2] = {0,};
+
+	token = strsep(&buffer, " ");
+	if(kstrtoint(token,0,&val[0]) != 0)
+		return -EINVAL;
+
+	token = strsep(&buffer, " ");
+	if(kstrtoint(token,0,&val[1]) != 0)
+		return -EINVAL;
+
+	hi->pdata->jack_buttons_zones[1].adc_low = val[0];
+	hi->pdata->jack_buttons_zones[1].adc_high = val[1];
+
+	return count;
+}
+
+
+static DEVICE_ATTR(vol_up_btn_adc, 0666, vol_up_btn_adc_show,
+	vol_up_btn_adc_store);
+
+static ssize_t vol_down_btn_adc_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct sec_jack_info *hi = dev_get_drvdata(dev);
+	int val[2]  = {0,};
+
+	val[0] = hi->pdata->jack_buttons_zones[2].adc_low;
+	val[1] = hi->pdata->jack_buttons_zones[2].adc_high;
+
+	return sprintf(buf, "%d %d\n",val[0],val[1]);
+}
+
+static ssize_t vol_down_btn_adc_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct sec_jack_info *hi = dev_get_drvdata(dev);
+	char *buffer = (char*)buf;
+	char *token;
+	int val[2] = {0,};
+
+	token = strsep(&buffer, " ");
+	if(kstrtoint(token,0,&val[0]) != 0)
+		return -EINVAL;
+
+	token = strsep(&buffer, " ");
+	if(kstrtoint(token,0,&val[1]) != 0)
+		return -EINVAL;
+
+	hi->pdata->jack_buttons_zones[2].adc_low = val[0];
+	hi->pdata->jack_buttons_zones[2].adc_high = val[1];
+
+	return count;
+}
+
+static DEVICE_ATTR(vol_down_btn_adc, 0666, vol_down_btn_adc_show,
+	vol_down_btn_adc_store);
+#endif
+static void sec_jack_timer_handler(unsigned long data)
+{
+	struct sec_jack_info *hi = (struct sec_jack_info *)data;
+
+	hi->buttons_enable = true;
+
+}
 /* thread run whenever the headset detect state changes (either insertion
  * or removal).
  */
 static irqreturn_t sec_jack_detect_irq(int irq, void *dev_id)
 {
+
+#if defined(CONFIG_MACH_S3VE3G_EUR)
+		struct sec_jack_info *hi = dev_id;
+		disable_irq_wake(hi->det_irq);
+		queue_work(hi->queue, &hi->detect_work);
+		mdelay(100);
+		enable_irq_wake(hi->det_irq);
+		pr_info("%s: Debug code for removing flooding of jack irq\n", __func__);
+		return IRQ_HANDLED;
+#else
 	struct sec_jack_info *hi = dev_id;
 
 	queue_work(hi->queue, &hi->detect_work);
 
 	return IRQ_HANDLED;
+#endif
 }
 
 void sec_jack_detect_work(struct work_struct *work)
@@ -536,6 +760,14 @@ void sec_jack_buttons_work(struct work_struct *work)
 	int num_buttons_zones = ARRAY_SIZE(pdata->jack_buttons_zones);	
 	int adc;
 	int i;
+
+	if (!hi->buttons_enable) {
+		pr_info("%s: BTN %d is skipped\n", __func__,
+			hi->pressed_code);
+		return;
+	}
+	/* prevent suspend to allow user space to respond to switch */
+	wake_lock_timeout(&hi->det_wake_lock, WAKE_LOCK_TIME);
 
 	/* when button is released */
 	if (hi->pressed == 0) {
@@ -619,9 +851,13 @@ static struct sec_jack_platform_data *sec_jack_populate_dt_pdata(struct device *
 		of_property_read_u32(dev->of_node, "qcom,earjack-micbias-expander-gpio", &pdata->ear_micbias_gpio);
 	if (pdata->ear_micbias_gpio < 0) {
 		pr_err("%s : can not find the earjack-micbias-gpio in the dt\n", __func__);
+		if (of_property_read_string(dev->of_node, "qcom,earjack-micbias-ldo", &pdata->ear_micbias_ldo) < 0)
+			pr_err("%s: can not find  earjack-micbias-ldo in the dt\n", __func__);
+		else
+			pr_info("%s : earjack-micbias-ldo=%s\n", __func__, pdata->ear_micbias_ldo);
 	} else
 		pr_info("%s : earjack-micbias-gpio =%d\n", __func__, pdata->ear_micbias_gpio);	
-			
+
 	pdata->fsa_en_gpio = of_get_named_gpio(dev->of_node, "qcom,earjack-fsa_en-gpio", 0);
 	if (pdata->fsa_en_gpio < 0) 
 		of_property_read_u32(dev->of_node, "qcom,earjack-fsa_en-expander-gpio", &pdata->fsa_en_gpio);
@@ -795,6 +1031,28 @@ static int sec_jack_probe(struct platform_device *pdev)
 	if (ret)
 		pr_err("Failed to create device file in sysfs entries(%s)!\n",
 			dev_attr_state.attr.name);
+#if defined (CONFIG_EARJACK_ADC_SYSFS)
+	ret = device_create_file(earjack, &dev_attr_jack_adc);
+	if (ret)
+		pr_err("Failed to create device file in sysfs entries(%s)!\n",
+			dev_attr_jack_adc.attr.name);
+
+	ret = device_create_file(earjack, &dev_attr_send_end_btn_adc);
+	if (ret)
+		pr_err("Failed to create device file in sysfs entries(%s)!\n",
+			dev_attr_send_end_btn_adc.attr.name);
+
+	ret = device_create_file(earjack, &dev_attr_vol_up_btn_adc);
+	if (ret)
+		pr_err("Failed to create device file in sysfs entries(%s)!\n",
+			dev_attr_vol_up_btn_adc.attr.name);
+
+	ret = device_create_file(earjack, &dev_attr_vol_down_btn_adc);
+	if (ret)
+		pr_err("Failed to create device file in sysfs entries(%s)!\n",
+			dev_attr_vol_down_btn_adc.attr.name);
+#endif
+	setup_timer(&hi->timer, sec_jack_timer_handler, (unsigned long)hi);
 
 	INIT_WORK(&hi->buttons_work, sec_jack_buttons_work);
 	INIT_WORK(&hi->detect_work, sec_jack_detect_work);
@@ -803,6 +1061,12 @@ static int sec_jack_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		pr_err("%s: Failed to create workqueue\n", __func__);
 		goto err_create_wq_failed;
+	}
+	hi->buttons_queue = create_singlethread_workqueue("sec_jack_buttons_wq");
+	if (hi->buttons_queue == NULL) {
+		ret = -ENOMEM;
+		pr_err("%s: Failed to create buttons workqueue\n", __func__);
+		goto err_create_buttons_wq_failed;
 	}
 	queue_work(hi->queue, &hi->detect_work);
 
@@ -855,12 +1119,20 @@ err_enable_irq_wake:
 err_request_detect_irq:
 	input_unregister_handler(&hi->handler);
 err_register_input_handler:
+	destroy_workqueue(hi->buttons_queue);
+err_create_buttons_wq_failed:
 	destroy_workqueue(hi->queue);
 err_create_wq_failed:
 	device_remove_file(earjack, &dev_attr_state);
 	device_remove_file(earjack, &dev_attr_key_state);
+#if defined (CONFIG_EARJACK_ADC_SYSFS)
+	device_remove_file(earjack, &dev_attr_jack_adc);
+	device_remove_file(earjack, &dev_attr_send_end_btn_adc);
+	device_remove_file(earjack, &dev_attr_vol_up_btn_adc);
+	device_remove_file(earjack, &dev_attr_vol_down_btn_adc);
+#endif
 	device_destroy(audio, 0);
-	class_destroy(audio);	
+	class_destroy(audio);
 	wake_lock_destroy(&hi->det_wake_lock);
 	switch_dev_unregister(&switch_jack_detection);
 	switch_dev_unregister(&switch_sendend);
@@ -882,6 +1154,7 @@ static int sec_jack_remove(struct platform_device *pdev)
 	disable_irq_wake(hi->det_irq);
 	free_irq(hi->det_irq, hi);
 	destroy_workqueue(hi->queue);
+	destroy_workqueue(hi->buttons_queue);
 	if (hi->send_key_dev) {
 		platform_device_unregister(hi->send_key_dev);
 		hi->send_key_dev = NULL;
@@ -912,9 +1185,32 @@ static struct platform_driver sec_jack_driver = {
 		.of_match_table = sec_jack_dt_match,
 	},
 };
+
+#if defined(CONFIG_MACH_KLTE_KOR) || defined(CONFIG_MACH_KLTE_JPN)
+extern unsigned int system_rev;
+#endif
+
 static int __init sec_jack_init(void)
 {
+#if defined(CONFIG_MACH_KLTE_KOR)
+	if (system_rev >= 13) {
+		pr_info("%s: Do not use sec jack in system_rev %d",
+			__func__, system_rev);
+		return 0;
+	} else {
+		return platform_driver_register(&sec_jack_driver);
+	}
+#elif defined(CONFIG_MACH_KLTE_JPN)
+	if (system_rev >= 11) {
+		pr_info("%s: Do not use sec jack in system_rev %d",
+			__func__, system_rev);
+		return 0;
+	} else {
+		return platform_driver_register(&sec_jack_driver);
+	}
+#else
 	return platform_driver_register(&sec_jack_driver);
+#endif
 }
 
 static void __exit sec_jack_exit(void)

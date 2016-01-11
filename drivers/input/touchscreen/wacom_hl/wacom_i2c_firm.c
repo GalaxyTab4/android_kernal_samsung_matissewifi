@@ -52,10 +52,10 @@ const char B934_chksum[] = { 0x1F, 0x93, 0x7E, 0xDE, 0xAD, };
 	defined(CONFIG_MACH_FRESCONEOLTE_CTC) || defined(CONFIG_SEC_LOCALE_KOR_FRESCO)
 const unsigned int fw_size = 0xEFFF;
 const unsigned char mpu_type = 0x28;
-unsigned int fw_ver_file = 0x1445;
+unsigned int fw_ver_file = 0x144B;
 unsigned char *fw_name = "epen/W9001_fresco.bin";
 
-char fw_chksum[] = { 0x1F, 0x72, 0x9C, 0xB1, 0x1F, };
+char fw_chksum[] = { 0x1F, 0x04, 0xF7, 0x9F, 0x69, };
 
 #endif
 

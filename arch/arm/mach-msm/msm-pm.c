@@ -42,10 +42,10 @@
 #include "scm-boot.h"
 #include "spm.h"
 #include "pm-boot.h"
+#include "clock.h"
 #ifdef CONFIG_SEC_DEBUG
 #include <mach/sec_debug.h>
 #endif
-#include "clock.h"
 
 #define CREATE_TRACE_POINTS
 #include <mach/trace_msm_low_power.h>
@@ -535,6 +535,10 @@ static int msm_pm_collapse(unsigned long unused)
 	return 0;
 }
 
+#ifdef CONFIG_SEC_PM_DEBUG
+extern int sec_print_masters_stats(void);
+#endif
+
 static bool __ref msm_pm_spm_power_collapse(
 	unsigned int cpu, bool from_idle, bool notify_rpm)
 {
@@ -570,6 +574,13 @@ static bool __ref msm_pm_spm_power_collapse(
 
 	collapsed = save_cpu_regs ?
 		!cpu_suspend(0, msm_pm_collapse) : msm_pm_pc_hotplug();
+
+
+#ifdef CONFIG_SEC_PM_DEBUG
+	if(from_idle == false && cpu == 0 && sec_debug_is_enabled()){
+		sec_print_masters_stats();
+	}
+#endif
 
 #ifdef CONFIG_SEC_DEBUG
 	secdbg_sched_msg("-pc(%d)", collapsed);
@@ -829,7 +840,7 @@ int msm_cpu_pm_enter_sleep(enum msm_pm_sleep_mode mode, bool from_idle)
 
 int msm_pm_wait_cpu_shutdown(unsigned int cpu)
 {
-	int timeout = 0;
+	int timeout = 50;
 
 	if (!msm_pm_slp_sts)
 		return 0;
@@ -850,9 +861,10 @@ int msm_pm_wait_cpu_shutdown(unsigned int cpu)
 		if (acc_sts & msm_pm_slp_sts[cpu].mask)
 			return 0;
 		udelay(100);
+#if defined(CONFIG_ARCH_MSM8974) || defined(CONFIG_ARCH_MSM8974PRO)
 		WARN(++timeout == 20, "CPU%u didn't collapse in 2 ms\n", cpu);
+#endif
 	}
-
 #if !(defined(CONFIG_ARCH_MSM8974) || defined(CONFIG_ARCH_MSM8974PRO))
 	pr_info("%s(): Timed out waiting for CPU %u SPM to enter sleep state",
 		__func__, cpu);

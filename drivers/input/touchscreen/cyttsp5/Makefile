@@ -1,32 +1,20 @@
-obj-$(CONFIG_TOUCHSCREEN_ATMEL_MXT2952T)	+= mxts.o
-obj-$(CONFIG_TOUCHSCREEN_ZINITIX)	+= zinitix_touch.o
-obj-$(CONFIG_TOUCHSCREEN_HIMAX)		+= Himax_Touch.o
-obj-$(CONFIG_TOUCHSCREEN_MMS300)		+= mms300_ts.o
+obj-$(CONFIG_TOUCHSCREEN_CYTTSP5) += cyttsp5_platform.o
+obj-$(CONFIG_TOUCHSCREEN_CYTTSP5) += cyttsp5_core.o
+obj-$(CONFIG_TOUCHSCREEN_CYTTSP5) += cyttsp5_device_access.o
+obj-$(CONFIG_TOUCHSCREEN_CYTTSP5) += cyttsp5_i2c.o
+obj-$(CONFIG_TOUCHSCREEN_CYTTSP5) += cyttsp5_loader.o
+obj-$(CONFIG_TOUCHSCREEN_CYTTSP5) += cyttsp5_mt_common.o
+obj-$(CONFIG_TOUCHSCREEN_CYTTSP5) += cyttsp5_samsung_factory.o
+obj-$(CONFIG_TOUCHSCREEN_CYTTSP5_DEVICETREE_SUPPORT) += cyttsp5_devtree.o
 
-#cyttsp
-#obj-$(CONFIG_TOUCHSCREEN_CYTTSP5)	+= cyttsp5_i2c__.o cyttsp5_core.o cyttsp5_mtb.o cyttsp5_mt_common.o cyttsp5_debug.o cyttsp5_device_access.o cyttsp5_loader.o cyttsp5_platform.o
+CYTTSP_CFLAGS = -DCONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_BINARY_FW_UPGRADE -DCONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_MANUAL_TTCONFIG_UPGRADE -DCONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_PLATFORM_FW_UPGRADE
+CFLAGS_cyttsp5_core.o += -DDEBUG
+CFLAGS_cyttsp5_i2c.o += -DDEBUG
+# CFLAGS_cyttsp5_mtb.o += -DDEBUG
+CFLAGS_cyttsp5_mt_common.o += -DDEBUG
+CFLAGS_cyttsp5_device_access.o += -DDEBUG
+CFLAGS_cyttsp5_loader.o += -DDEBUG $(CYTTSP_CFLAGS)
+CFLAGS_cyttsp5_platform.o += -DDEBUG $(CYTTSP_CFLAGS)
+CFLAGS_cyttsp5_samsung_factory.o += -DDEBUG
 
-#obj-m	+= cyttsp5.o
-obj-y	+= cyttsp5.o
-cyttsp5-y := cyttsp5_core.o cyttsp5_mt_common.o #cyttsp5_platform.o 
-cyttsp5-y += cyttsp5_mtb.o
-#cyttsp5-y += cyttsp5_btn.o
-cyttsp5-y += cyttsp5_samsung_factory.o
-obj-y += cyttsp5_platform.o
-#obj-m += cyttsp5_i2c.o
-#obj-m += cyttsp5_loader.o
-#obj-m += cyttsp5_device_access.o
-obj-y += cyttsp5_i2c.o
-obj-y += cyttsp5_loader.o
-obj-y += cyttsp5_device_access.o
 
-#CYTTSP_CFLAGS = -DCONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_BUTTON
-#CFLAGS_cyttsp5_core.o += $(CYTTSP_CFLAGS) -DDEBUG -DVERBOSE_DEBUG
-#CFLAGS_cyttsp5_i2c.o += $(CYTTSP_CFLAGS) -DDEBUG
-#CFLAGS_cyttsp5_mtb.o += $(CYTTSP_CFLAGS) -DDEBUG
-#CFLAGS_cyttsp5_mt_common.o += $(CYTTSP_CFLAGS) -DDEBUG
-#CFLAGS_cyttsp5_btn.o += $(CYTTSP_CFLAGS) -DDEBUG
-#CFLAGS_cyttsp5_device_access.o += $(CYTTSP_CFLAGS) -DDEBUG
-#CFLAGS_cyttsp5_loader.o += $(CYTTSP_CFLAGS) -DDEBUG
-#CFLAGS_cyttsp5_platform.o += $(CYTTSP_CFLAGS) -DDEBUG
-#CFLAGS_cyttsp5_samsung_factory.o += $(CYTTSP_CFLAGS) -DDEBUG

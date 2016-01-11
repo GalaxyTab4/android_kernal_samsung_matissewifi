@@ -28,9 +28,8 @@
 #include <linux/semaphore.h>
 
 extern void *restart_reason;
-// Enable to use DDR address for saving restart reason
-//define USE_RESTART_REASSON_DDR
-#ifdef USE_RESTART_REASSON_DDR
+// Enable CONFIG_RESTART_REASON_DDR to use DDR address for saving restart reason
+#ifdef CONFIG_RESTART_REASON_DDR
 extern void *restart_reason_ddr_address;
 #endif
 
@@ -38,6 +37,9 @@ extern void *restart_reason_ddr_address;
 extern int sec_debug_init(void);
 extern int sec_debug_dump_stack(void);
 extern void sec_debug_hw_reset(void);
+#ifdef CONFIG_SEC_PERIPHERAL_SECURE_CHK
+extern void sec_peripheral_secure_check_fail(void);
+#endif
 extern void sec_debug_check_crash_key(unsigned int code, int value);
 extern void sec_getlog_supply_fbinfo(void *p_fb, u32 res_x, u32 res_y, u32 bpp,
 		u32 frames);
@@ -52,6 +54,7 @@ extern void sec_gaf_supply_rqinfo(unsigned short curr_offset,
 extern int sec_debug_is_enabled(void);
 extern int sec_debug_is_enabled_for_ssr(void);
 extern int silent_log_panic_handler(void);
+extern void sec_debug_secure_app_addr_size(uint32_t addr,uint32_t size);
 #else
 static inline int sec_debug_init(void)
 {
@@ -324,8 +327,9 @@ static inline void sec_debug_fuelgauge_log(unsigned int voltage,
 extern bool kernel_sec_set_normal_pwroff(int value);
 extern int kernel_sec_get_normal_pwroff(void);
 #endif
-
-
+#ifdef CONFIG_RESTART_REASON_SEC_PARAM
+extern void sec_param_restart_reason(const char *cmd);
+#endif
 extern bool kernel_sec_set_debug_level(int level);
 extern int kernel_sec_get_debug_level(void);
 extern int ssr_panic_handler_for_sec_dbg(void);
@@ -554,6 +558,8 @@ struct sec_debug_subsys {
 	struct sec_debug_subsys_data_modem *modem;
 	struct sec_debug_subsys_data *dsps;
 
+	int secure_app_start_addr;
+	int secure_app_size;
 	struct sec_debug_subsys_private priv;
 };
 

@@ -27,6 +27,7 @@
 #include <linux/completion.h>
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
+#include <linux/regulator/consumer.h>
 
 #include "sensors_core.h"
 #include "ak09911c_reg.h"
@@ -79,6 +80,7 @@ struct ak09911c_p {
 	u8 asa[3];
 	u32 chip_pos;
 	int m_rst_n;
+	u64 timestamp;
 };
 
 static int ak09911c_i2c_read(struct i2c_client *client,
@@ -135,12 +137,36 @@ static int ak09911c_i2c_write(struct i2c_client *client,
 static int ak09911c_i2c_read_block(struct i2c_client *client,
 		unsigned char reg_addr, unsigned char *buf, unsigned char len)
 {
+#if defined(CONFIG_SEC_BERLUTI_PROJECT)
+	int ret;
+	struct i2c_msg msg[2];
+
+	msg[0].addr = client->addr;
+	msg[0].flags = I2C_M_WR;
+	msg[0].len = 1;
+	msg[0].buf = &reg_addr;
+
+	msg[1].addr = client->addr;
+	msg[1].flags = I2C_M_RD;
+	msg[1].len = len;
+	msg[1].buf = buf;
+
+	ret = i2c_transfer(client->adapter, msg, 2);
+	if (ret < 0) {
+		pr_err("[SENSOR]: %s - i2c bus read error %d\n",
+			__func__, ret);
+		return ret;
+	}
+
+	return 0;
+#else
 	int i, ret = 0;
 
 	for (i = 0; i < len; i++)
 		ret += ak09911c_i2c_read(client, reg_addr + i, &buf[i]);
 
 	return ret;
+#endif
 }
 
 static int ak09911c_ecs_set_mode_power_down(struct ak09911c_p *data)
@@ -208,10 +234,12 @@ again:
 	/* Check ST bit */
 	if (!(temp[0] & 0x01)) {
 		if ((retries++ < 5) && (temp[0] == 0)) {
+#if !defined(CONFIG_SEC_BERLUTI_PROJECT)
 			mdelay(2);
+#endif
 			goto again;
 		} else {
-			ret = -EAGAIN;
+			ret = -1;
 			goto exit_i2c_read_fail;
 		}
 	}
@@ -220,13 +248,13 @@ again:
 			&temp[1], SENSOR_DATA_SIZE - 1);
 	if (ret < 0)
 		goto exit_i2c_read_err;
-
+#if 0
 	/* Check ST2 bit */
-	if ((temp[8] & 0x01)) {
+	if ((temp[8] & 0x08)) {
 		ret = -EAGAIN;
 		goto exit_i2c_read_fail;
 	}
-
+#endif
 	mag->x = temp[1] | (temp[2] << 8);
 	mag->y = temp[3] | (temp[4] << 8);
 	mag->z = temp[5] | (temp[6] << 8);
@@ -248,15 +276,26 @@ static void ak09911c_work_func(struct work_struct *work)
 {
 	int ret;
 	struct ak09911c_v mag;
+	struct timespec ts;
+	int time_hi, time_lo;
+
 	struct ak09911c_p *data = container_of((struct delayed_work *)work,
 			struct ak09911c_p, work);
 	unsigned long delay = nsecs_to_jiffies(atomic_read(&data->delay));
 
+	ts = ktime_to_timespec(ktime_get_boottime());
+	data->timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+	time_lo = (int)(data->timestamp & TIME_LO_MASK);
+	time_hi = (int)((data->timestamp & TIME_HI_MASK) >> TIME_HI_SHIFT);
+
 	ret = ak09911c_read_mag_xyz(data, &mag);
+
 	if (ret >= 0) {
 		input_report_rel(data->input, REL_X, mag.x);
 		input_report_rel(data->input, REL_Y, mag.y);
 		input_report_rel(data->input, REL_Z, mag.z);
+		input_report_rel(data->input, REL_RX, time_hi);
+		input_report_rel(data->input, REL_RY, time_lo);
 		input_sync(data->input);
 		data->magdata = mag;
 	}
@@ -596,6 +635,8 @@ static ssize_t ak09911c_adc(struct device *dev,
 	else
 		success = true;
 
+	data->magdata = mag;
+
 exit:
 	return snprintf(buf, PAGE_SIZE, "%s,%d,%d,%d\n",
 			(success ? "OK" : "NG"), mag.x, mag.y, mag.z);
@@ -613,6 +654,7 @@ static ssize_t ak09911c_raw_data_read(struct device *dev,
 	}
 
 	ak09911c_read_mag_xyz(data, &mag);
+	data->magdata = mag;
 
 exit:
 	return snprintf(buf, PAGE_SIZE, "%d,%d,%d\n", mag.x, mag.y, mag.z);
@@ -756,6 +798,8 @@ static int ak09911c_input_init(struct ak09911c_p *data)
 	input_set_capability(dev, EV_REL, REL_X);
 	input_set_capability(dev, EV_REL, REL_Y);
 	input_set_capability(dev, EV_REL, REL_Z);
+	input_set_capability(dev, EV_REL, REL_RX); /* time_hi */
+	input_set_capability(dev, EV_REL, REL_RY); /* time_lo */
 	input_set_drvdata(dev, data);
 
 	ret = input_register_device(dev);
@@ -783,6 +827,96 @@ static int ak09911c_input_init(struct ak09911c_p *data)
 	return 0;
 }
 
+#if defined(CONFIG_MACH_FRESCONEOLTE_CTC)
+static void ak09911c_power_enable(int en)
+{
+	int rc;
+	static struct regulator* ldo15;
+	static struct regulator* ldo19;
+	static struct regulator* lvs1;
+
+	printk(KERN_ERR "%s %s\n", __func__, (en) ? "on" : "off");
+	if(!ldo15){
+		ldo15 = regulator_get(NULL,"8226_l15");
+		rc = regulator_set_voltage(ldo15,2800000,2800000);
+		pr_info("[TMP] %s, %d\n", __func__, __LINE__);
+		if (rc){
+			printk(KERN_ERR "%s: ak09911c set_level failed (%d)\n",__func__, rc);
+		}
+	}
+	if(!ldo19){
+		ldo19 = regulator_get(NULL,"8226_l19");
+		rc = regulator_set_voltage(ldo19,2850000,2850000);
+		pr_info("[TMP] %s, %d\n", __func__, __LINE__);
+		if (rc){
+			printk(KERN_ERR "%s: ak09911c set_level failed (%d)\n",__func__, rc);
+		}
+	}
+
+	if(!lvs1){
+		lvs1 = regulator_get(NULL,"8226_lvs1");
+		rc = regulator_set_voltage(ldo15,1800000,1800000);
+		pr_info("[TMP] %s, %d\n", __func__, __LINE__);
+		if (rc){
+			printk(KERN_ERR "%s: ak09911c set_level failed (%d)\n",__func__, rc);
+		}
+	}
+	if(en){
+		rc = regulator_enable(ldo15);
+		if (rc){
+			printk(KERN_ERR "%s: ak09911c enable failed (%d)\n",__func__, rc);
+		}
+		rc = regulator_enable(ldo19);
+		if (rc){
+			printk(KERN_ERR "%s: ak09911c enable failed (%d)\n",__func__, rc);
+		}
+
+		rc = regulator_enable(lvs1);
+		if (rc){
+			printk(KERN_ERR "%s: ak09911c enable failed (%d)\n",__func__, rc);
+		}
+	}
+	else{
+		rc = regulator_disable(ldo15);
+		if (rc){
+			printk(KERN_ERR "%s: ak09911c disable failed (%d)\n",__func__, rc);
+		}
+	}
+	return;
+}
+#elif defined(CONFIG_SEC_BERLUTI_PROJECT) || defined(CONFIG_MACH_CHAGALL_KDI)
+static void ak09911c_power_enable(struct device *dev, bool onoff)
+{
+	struct regulator *ak09911c_vcc, *ak09911c_lvs1;
+
+	ak09911c_vcc = devm_regulator_get(dev, "ak09911c-i2c-vcc");
+	if (IS_ERR(ak09911c_vcc)) {
+		pr_err("%s: cannot get ak09911c_vcc\n", __func__);
+		return;
+	}
+
+	ak09911c_lvs1 = devm_regulator_get(dev, "ak09911c-i2c-lvs1");
+	if (IS_ERR(ak09911c_lvs1)) {
+		pr_err("%s: cannot get ak09911c_lvs1\n", __func__);
+		devm_regulator_put(ak09911c_vcc);
+		return;
+	}
+
+	if (onoff) {
+		regulator_enable(ak09911c_vcc);
+		regulator_enable(ak09911c_lvs1);
+	} else {
+		regulator_disable(ak09911c_lvs1);
+		regulator_disable(ak09911c_vcc);
+	}
+
+	devm_regulator_put(ak09911c_vcc);
+	devm_regulator_put(ak09911c_lvs1);
+
+	return;
+}
+#endif
+
 static int ak09911c_parse_dt(struct ak09911c_p *data, struct device *dev)
 {
 	struct device_node *dNode = dev->of_node;
@@ -800,7 +934,11 @@ static int ak09911c_parse_dt(struct ak09911c_p *data, struct device *dev)
 
 	if (of_property_read_u32(dNode,
 			"ak09911c-i2c,chip_pos", &data->chip_pos) < 0)
+#if defined(CONFIG_MACH_FRESCONEOLTE_CTC)
+		data->chip_pos = AK09911C_TOP_UPPER_RIGHT;
+#else
 		data->chip_pos = AK09911C_TOP_LOWER_RIGHT;
+#endif
 
 	return 0;
 }
@@ -812,6 +950,16 @@ static int ak09911c_probe(struct i2c_client *client,
 	struct ak09911c_p *data = NULL;
 
 	pr_info("[SENSOR]: %s - Probe Start!\n", __func__);
+
+#if defined(CONFIG_MACH_FRESCONEOLTE_CTC)
+	ak09911c_power_enable(1);
+	mdelay(10);
+#elif defined(CONFIG_SEC_BERLUTI_PROJECT) || defined(CONFIG_MACH_CHAGALL_KDI)
+	ak09911c_power_enable(&client->dev, 1);
+#endif
+#if defined(CONFIG_MACH_CHAGALL_KDI)
+	mdelay(10);
+#endif
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		pr_err("[SENSOR]: %s - i2c_check_functionality error\n",
 			__func__);
@@ -969,6 +1117,7 @@ static struct i2c_driver ak09911c_driver = {
 
 static int __init ak09911c_init(void)
 {
+	printk(KERN_INFO" ak0911c_init \n");
 	return i2c_add_driver(&ak09911c_driver);
 }
 

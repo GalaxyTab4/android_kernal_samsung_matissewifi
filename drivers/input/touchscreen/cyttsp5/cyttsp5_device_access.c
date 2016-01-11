@@ -209,11 +209,11 @@ static ssize_t cyttsp5_command_store(struct device *dev,
 	/* write ic_buf to log */
 	cyttsp5_pr_buf(dev, dad->pr_buf, dad->ic_buf, length, "ic_buf");
 
-	//pm_runtime_get_sync(dev);
+	/*pm_runtime_get_sync(dev);*/
 	rc = cmd->cmd->user_cmd(dev, 1, CY_MAX_PRBUF_SIZE,
 			dad->response_buf, length, dad->ic_buf,
 			&dad->response_length);
-	//pm_runtime_put(dev);
+	/*pm_runtime_put(dev);*/
 	if (rc) {
 		dad->response_length = 0;
 		dev_err(dev, "%s: Failed to store command\n", __func__);
@@ -287,7 +287,7 @@ static ssize_t tthe_get_panel_data_debugfs_read(struct file *filp,
 	if (!buf_out)
 		goto release_mutex;
 
-	//pm_runtime_get_sync(dev);
+	/*pm_runtime_get_sync(dev);*/
 
 	rc = cmd->request_exclusive(dev, CY_REQUEST_EXCLUSIVE_TIMEOUT);
 	if (rc < 0)
@@ -337,7 +337,7 @@ static ssize_t tthe_get_panel_data_debugfs_read(struct file *filp,
 release_exclusive:
 	rc1 = cmd->release_exclusive(dev);
 put_runtime:
-	//pm_runtime_put(dev);
+	/*pm_runtime_put(dev);*/
 
 	if (rc < 0)
 		goto release_mutex;
@@ -522,11 +522,15 @@ static int cyttsp5_setup_sysfs_attention(struct device *dev)
 	return rc;
 }
 
-static int cyttsp5_device_access_probe(struct device *dev)
+int cyttsp5_device_access_probe(struct device *dev)
 {
 	struct cyttsp5_core_data *cd = dev_get_drvdata(dev);
 	struct cyttsp5_device_access_data *dad;
 	int rc;
+
+	cmd = cyttsp5_get_commands();
+	if (!cmd)
+		return -EINVAL;
 
 	dad = kzalloc(sizeof(*dad), GFP_KERNEL);
 	if (!dad) {
@@ -565,8 +569,9 @@ static int cyttsp5_device_access_probe(struct device *dev)
 	dev_err(dev, "%s failed.\n", __func__);
 	return rc;
 }
+EXPORT_SYMBOL(cyttsp5_device_access_probe);
 
-static int cyttsp5_device_access_release(struct device *dev)
+int cyttsp5_device_access_release(struct device *dev)
 {
 	struct cyttsp5_device_access_data *dad
 		= cyttsp5_get_device_access_data(dev);
@@ -587,94 +592,4 @@ static int cyttsp5_device_access_release(struct device *dev)
 	kfree(dad);
 	return 0;
 }
-
-static char *core_ids[CY_MAX_NUM_CORE_DEVS] = {
-	CY_DEFAULT_CORE_ID,
-	NULL,
-	NULL,
-	NULL,
-	NULL
-};
-
-static int num_core_ids = 1;
-
-module_param_array(core_ids, charp, &num_core_ids, 0);
-MODULE_PARM_DESC(core_ids,
-	"Core id list of cyttsp5 core devices for device access module");
-
-static int __init cyttsp5_device_access_init(void)
-{
-	struct cyttsp5_core_data *cd;
-	int rc = 0;
-	int i, j;
-
-	/* Check for invalid or duplicate core_ids */
-	for (i = 0; i < num_core_ids; i++) {
-		if (!strlen(core_ids[i])) {
-			pr_err("%s: core_id %d is empty\n",
-				__func__, i+1);
-			return -EINVAL;
-		}
-		for (j = i+1; j < num_core_ids; j++)
-			if (!strcmp(core_ids[i], core_ids[j])) {
-				pr_err("%s: core_ids %d and %d are same\n",
-					__func__, i+1, j+1);
-				return -EINVAL;
-			}
-	}
-
-	cmd = cyttsp5_get_commands();
-	if (!cmd)
-		return -EINVAL;
-
-	for (i = 0; i < num_core_ids; i++) {
-		cd = cyttsp5_get_core_data(core_ids[i]);
-		if (!cd)
-			continue;
-
-		pr_info("%s: Registering device access module for core_id: %s\n",
-			__func__, core_ids[i]);
-		rc = cyttsp5_device_access_probe(cd->dev);
-		if (rc < 0) {
-			pr_err("%s: Error, failed registering module\n",
-				__func__);
-			goto fail_unregister_devices;
-		}
-	}
-
-	pr_info("%s: Cypress TTSP Device Access Driver (Built %s) rc=%d\n",
-		 __func__, CY_DRIVER_DATE, rc);
-	return 0;
-
-fail_unregister_devices:
-	for (i--; i >= 0; i--) {
-		cd = cyttsp5_get_core_data(core_ids[i]);
-		if (!cd)
-			continue;
-		cyttsp5_device_access_release(cd->dev);
-		pr_info("%s: Unregistering device access module for core_id: %s\n",
-			__func__, core_ids[i]);
-	}
-	return rc;
-}
-module_init(cyttsp5_device_access_init);
-
-static void __exit cyttsp5_device_access_exit(void)
-{
-	struct cyttsp5_core_data *cd;
-	int i;
-
-	for (i = 0; i < num_core_ids; i++) {
-		cd = cyttsp5_get_core_data(core_ids[i]);
-		if (!cd)
-			continue;
-		cyttsp5_device_access_release(cd->dev);
-		pr_info("%s: Unregistering device access module for core_id: %s\n",
-			__func__, core_ids[i]);
-	}
-}
-module_exit(cyttsp5_device_access_exit);
-
-MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Cypress TrueTouch(R) Standard Product Device Access Driver");
-MODULE_AUTHOR("Cypress Semiconductor <ttdrivers@cypress.com>");
+EXPORT_SYMBOL(cyttsp5_device_access_release);

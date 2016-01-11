@@ -185,7 +185,7 @@ static int cypress_touchkey_i2c_read(struct i2c_client *client,
 
 	if (!info->enabled) {
 		dev_info(&client->dev, "%s: touchkey is not enabled\n", __func__);
-		return 0;
+		return -1;
 	}
 
 	while (retry--) {
@@ -209,7 +209,7 @@ static int cypress_touchkey_i2c_write(struct i2c_client *client,
 
 	if (!info->enabled) {
 		dev_info(&client->dev, "%s: touchkey is not enabled\n", __func__);
-		return 0;
+		return -1;
 	}
 
 	while (retry--) {
@@ -223,6 +223,59 @@ static int cypress_touchkey_i2c_write(struct i2c_client *client,
 	}
 	return err;
 }
+
+#ifdef CYPRESS_SUPPORT_DUAL_INT_MODE
+static void cypress_touchkey_interrupt_set_dual(struct i2c_client *client)
+{
+	struct cypress_touchkey_info *info = dev_get_drvdata(&client->dev);
+	int ret = 0;
+	int retry = 5;
+	u8 data[3] = {0, };
+
+	if (info->device_ver != 0x10) { /* support CYPRESS 20075 */
+		dev_err(&client->dev, "%s: not support this module\n", __func__);
+		return;
+	}
+
+	if (info->ic_fw_ver < CYPRESS_RECENT_BACK_REPORT_FW_VER) {
+		dev_err(&client->dev, "%s: not support this version\n", __func__);
+		return;
+	}
+
+	while (retry--) {
+		data[0] = TK_CMD_DUAL_DETECTION;
+		data[1] = 0x00;
+		data[2] = TK_BIT_DETECTION_CONFIRM;
+
+		ret = i2c_smbus_write_i2c_block_data(client, TK_CMD_INTERRUPT_SET_REG, 3, &data[0]);
+		if (ret < 0) {
+			dev_err(&client->dev, "%s: i2c write error. (%d)\n", __func__, ret);
+			msleep(30);
+			continue;
+		}
+		msleep(30);
+
+		data[0] = CYPRESS_DETECTION_FLAG;
+
+		ret = i2c_smbus_read_i2c_block_data(client, data[0], 1, &data[1]);
+		if (ret < 0) {
+			dev_err(&client->dev, "%s: i2c read error. (%d)\n", __func__, ret);
+			msleep(30);
+			continue;
+		}
+
+		if (data[1] != 1) {
+			dev_err(&client->dev,
+				"%s: interrupt set: 0x%X, failed.\n", __func__, data[1]);
+			continue;
+		}
+
+		dev_info(&client->dev, "%s: interrupt set: 0x%X\n", __func__, data[1]);
+		break;
+	}
+
+}
+#endif
 
 static int tkey_i2c_check(struct cypress_touchkey_info *info)
 {
@@ -249,6 +302,11 @@ static int tkey_i2c_check(struct cypress_touchkey_info *info)
 	info->device_ver = data[3];
 	dev_info(&client->dev, "%s: ic_fw_ver = 0x%02x, module_ver = 0x%02x, CY device = 0x%02x\n",
 		__func__, info->ic_fw_ver, info->module_ver, info->device_ver);
+
+#ifdef CYPRESS_SUPPORT_DUAL_INT_MODE
+	/* CYPRESS Firmware setting interrupt type : dual or single interrupt */
+	cypress_touchkey_interrupt_set_dual(info->client);
+#endif
 	return ret;
 }
 
@@ -460,7 +518,7 @@ static int touchkey_ta_setting(struct cypress_touchkey_info *info)
 
 		/* Check status flag mode */
 		ret = cypress_touchkey_i2c_read(info->client, CYPRESS_STATUS_FLAG, data, 1);
-		if (ret <= 0) {
+		if (ret < 0) {
 			dev_info(&info->client->dev, "%s: Failed to check status flag.\n",
 					__func__);
 			return ret;
@@ -525,7 +583,7 @@ static void cypress_touchkey_ta_cb(struct touchkey_callbacks *cb, bool ta_status
 static void cypress_touchkey_glove_work(struct work_struct *work)
 {
 	struct cypress_touchkey_info *info =
-		container_of(work, struct cypress_touchkey_info, glove_work);
+		container_of(work, struct cypress_touchkey_info, glove_work.work);
 
 	u8 data[6] = { 0, };
 	int ret = 0;
@@ -564,7 +622,7 @@ static void cypress_touchkey_glove_work(struct work_struct *work)
 
 		/* Check status flag mode */
 		ret = cypress_touchkey_i2c_read(info->client, CYPRESS_STATUS_FLAG, data, 1);
-		if (ret <= 0) {
+		if (ret < 0) {
 			dev_info(&info->client->dev, "%s: Failed to check status flag.\n",
 					__func__);
 			return;
@@ -596,12 +654,6 @@ static void cypress_touchkey_glove_work(struct work_struct *work)
 
 int cypress_touchkey_glovemode(struct cypress_touchkey_info *info, int value)
 {
-	if (!(info->enabled)) {
-		dev_info(&info->client->dev, "%s Touchkey is not enabled.\n",
-				__func__);
-		return 0;
-		}
-
 	if (info->device_ver != 0x10) {/*CY8C20075*/
 		dev_info(&info->client->dev, "%s not suppoered Device.\n",
 				__func__);
@@ -618,10 +670,14 @@ int cypress_touchkey_glovemode(struct cypress_touchkey_info *info, int value)
 		return 0;
 	}
 
+	mutex_lock(&info->tkey_glove_lock);
+	cancel_delayed_work(&info->glove_work);
+
 	info->glove_value = value;
 
-	queue_work(info->glove_wq, &info->glove_work);
-
+	schedule_delayed_work(&info->glove_work,
+		msecs_to_jiffies(TKEY_GLOVE_DWORK_TIME));
+	mutex_unlock(&info->tkey_glove_lock);
 	return 0;
 }
 #endif
@@ -688,7 +744,7 @@ void cypress_touchkey_flip_cover(struct cypress_touchkey_info *info, int value)
 		msleep(30);
 		/* Check status flag mode */
 		ret = cypress_touchkey_i2c_read(info->client, CYPRESS_STATUS_FLAG, data, 1);
-		if (ret <= 0) {
+		if (ret < 0) {
 			dev_info(&info->client->dev, "%s: Failed to check status flag.\n",
 					__func__);
 			return;
@@ -789,7 +845,7 @@ void cypress_touchkey_1mm_mode(struct cypress_touchkey_info *info, int value)
 		msleep(30);
 		/* Check status flag mode */
 		ret = cypress_touchkey_i2c_read(info->client, CYPRESS_STATUS_FLAG, data, 1);
-		if (ret <= 0) {
+		if (ret < 0) {
 			dev_info(&info->client->dev, "%s: Failed to check status flag.\n",
 					__func__);
 			return;
@@ -826,6 +882,7 @@ static irqreturn_t cypress_touchkey_interrupt(int irq, void *dev_id)
 	int code;
 	int press;
 	int ret;
+	int i;
 
 	ret = gpio_get_value(info->pdata->gpio_int);
 	if (ret) {
@@ -851,22 +908,66 @@ static irqreturn_t cypress_touchkey_interrupt(int irq, void *dev_id)
 		goto out;
 	}
 
-	press = !(buf[0] & PRESS_BIT_MASK);
-	code = (int)(buf[0] & KEYCODE_BIT_MASK) - 1;
-	dev_info(&info->client->dev,
-			"%s: code=%d %s. fw_ver=0x%x, module_ver=0x%x \n", __func__,
-			code, press ? "pressed" : "released", info->ic_fw_ver, info->module_ver);
+	/* L OS support Screen Pinning feature.
+	 * "recent + back key" event is CombinationKey for exit Screen Pinning mode.
+	 * If touchkey firmware version is higher than CYPRESS_RECENT_BACK_REPORT_FW_VER,
+	 * touchkey can make interrupt "back key" and "recent key" in same time.
+	 * lower version firmware can make interrupt only one key event.
+	 */
+	if (info->ic_fw_ver >= CYPRESS_RECENT_BACK_REPORT_FW_VER) {
+		int menu_data = buf[0] & 0x3;
+		int back_data = (buf[0] >> 2) & 0x3;
+		u8 menu_press = menu_data % 2;
+		u8 back_press = back_data % 2;
 
-	if (code < 0) {
+		if (menu_data)
+			input_report_key(info->input_dev, info->keycode[0], menu_press);
+		if (back_data)
+			input_report_key(info->input_dev, info->keycode[1], back_press);
+
+		press = menu_press | back_press;
+
+#ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
 		dev_info(&info->client->dev,
-				"%s, not profer interrupt 0x%2X.(release all finger)\n",
-				__func__, buf[0]);
-		/* need release all finger function. */
-		goto out;
-	}
+				"%s: %s%s%X, fw_ver: 0x%x, modue_ver: 0x%x\n", __func__,
+				menu_data ? (menu_press ? "menu P " : "menu R ") : "",
+				back_data ? (back_press ? "back P " : "back R ") : "",
+				buf[0], info->ic_fw_ver, info->module_ver);
+#else
+		dev_info(&info->client->dev, "%s: key %s%s fw_ver: 0x%x, modue_ver: 0x%x\n", __func__,
+				menu_data ? (menu_press ? "P" : "R") : "",
+				back_data ? (back_press ? "P" : "R") : "",
+				info->ic_fw_ver, info->module_ver);
+#endif
+	} else {
+		press = !(buf[0] & PRESS_BIT_MASK);
+		code = (int)(buf[0] & KEYCODE_BIT_MASK) - 1;
+
+#ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
+		dev_info(&info->client->dev,
+				"%s: code=%d %s. fw_ver=0x%x, module_ver=0x%x \n", __func__,
+				code, press ? "pressed" : "released", info->ic_fw_ver, info->module_ver);
+#else
+		dev_info(&info->client->dev,
+				"%s: %s. fw_ver=0x%x, module_ver=0x%x \n", __func__,
+				press ? "pressed" : "released", info->ic_fw_ver, info->module_ver);
+#endif
+		if (code < 0) {
+			dev_info(&info->client->dev,
+					"%s, not profer interrupt 0x%2X.(release all finger)\n",
+					__func__, buf[0]);
+			/* need release all finger function. */
+			for (i = 0; i < info->pdata->keycodes_size; i++) {
+				input_report_key(info->input_dev, info->keycode[i], 0);
+				input_sync(info->input_dev);
+			}
+			goto out;
+		}
 
 		input_report_key(info->input_dev, info->keycode[code], press);
-		input_sync(info->input_dev);
+	}
+	input_sync(info->input_dev);
+
 #ifdef TSP_BOOSTER
 	cypress_set_dvfs_lock(info, !!press);
 #endif
@@ -1895,38 +1996,48 @@ static DEVICE_ATTR(brightness, S_IRUGO | S_IWUSR | S_IWGRP,
 		NULL, cypress_touchkey_led_control);
 static DEVICE_ATTR(touch_sensitivity, S_IRUGO | S_IWUSR | S_IWGRP,
 		NULL, cypress_touchkey_sensitivity_control);
+
 static DEVICE_ATTR(touchkey_recent, S_IRUGO,	/* RECENT inner diff */
 		cypress_touchkey_menu_inner_show, NULL);
-static DEVICE_ATTR(touchkey_diff_data1, S_IRUGO,/* RECENT outer diff */
-		cypress_touchkey_menu_show, NULL);
 static DEVICE_ATTR(touchkey_back, S_IRUGO,	/* BACK inner diff */
 		cypress_touchkey_back_inner_show, NULL);
-static DEVICE_ATTR(touchkey_diff_data3, S_IRUGO,/* BACK outer diff */
+
+static DEVICE_ATTR(touchkey_recent_outer, S_IRUGO,	/* RECENT outer diff */
+		cypress_touchkey_menu_show, NULL);
+static DEVICE_ATTR(touchkey_recent_inner, S_IRUGO,	/* RECENT inner diff */
+		cypress_touchkey_menu_inner_show, NULL);
+static DEVICE_ATTR(touchkey_back_outer, S_IRUGO,	/* BACK outer diff */
 		cypress_touchkey_back_show, NULL);
-static DEVICE_ATTR(touchkey_raw_data0, S_IRUGO,	/* BACK outer raw */
-		cypress_touchkey_raw_data2_show, NULL);
-static DEVICE_ATTR(touchkey_raw_data1, S_IRUGO,	/* BACK inner raw */
-		cypress_touchkey_raw_data3_show, NULL);
-static DEVICE_ATTR(touchkey_raw_data2, S_IRUGO,	/* RECENT outer raw */
+static DEVICE_ATTR(touchkey_back_inner, S_IRUGO,	/* BACK inner diff */
+		cypress_touchkey_back_inner_show, NULL);
+
+static DEVICE_ATTR(touchkey_recent_raw_outer, S_IRUGO,	/* RECENT outer raw */
 		cypress_touchkey_raw_data0_show, NULL);
-static DEVICE_ATTR(touchkey_raw_data3, S_IRUGO,	/* RECENT inner raw */
+static DEVICE_ATTR(touchkey_recent_raw_inner, S_IRUGO,	/* RECENT inner raw */
 		cypress_touchkey_raw_data1_show, NULL);
-static DEVICE_ATTR(touchkey_baseline_data0, S_IRUGO,	/* RECENT inner baseline */
-		cypress_touchkey_base_data1_show, NULL);
-static DEVICE_ATTR(touchkey_baseline_data1, S_IRUGO,	/* BACK inner baseline */
-		cypress_touchkey_base_data3_show, NULL);
-static DEVICE_ATTR(touchkey_baseline_data2, S_IRUGO,	/* RECENT outer baseline */
+static DEVICE_ATTR(touchkey_back_raw_outer, S_IRUGO,	/* BACK outer raw */
+		cypress_touchkey_raw_data2_show, NULL);
+static DEVICE_ATTR(touchkey_back_raw_inner, S_IRUGO,	/* BACK inner raw */
+		cypress_touchkey_raw_data3_show, NULL);
+
+static DEVICE_ATTR(touchkey_baseline_data0, S_IRUGO,	/* RECENT outer baseline */
 		cypress_touchkey_base_data0_show, NULL);
-static DEVICE_ATTR(touchkey_baseline_data3, S_IRUGO,	/* BACK outer baseline */
+static DEVICE_ATTR(touchkey_baseline_data1, S_IRUGO,	/* RECENT inner baseline */
+		cypress_touchkey_base_data1_show, NULL);
+static DEVICE_ATTR(touchkey_baseline_data2, S_IRUGO,	/* BACK outer baseline */
 		cypress_touchkey_base_data2_show, NULL);
-static DEVICE_ATTR(touchkey_idac0, S_IRUGO,	/* BACK outer idac */
-		cypress_touchkey_idac2_show, NULL);
-static DEVICE_ATTR(touchkey_idac1, S_IRUGO,	/* BACK inner idac */
-		cypress_touchkey_idac3_show, NULL);
-static DEVICE_ATTR(touchkey_idac2, S_IRUGO,	/* RECENT outer idac */
+static DEVICE_ATTR(touchkey_baseline_data3, S_IRUGO,	/* BACK inner baseline */
+		cypress_touchkey_base_data3_show, NULL);
+
+static DEVICE_ATTR(touchkey_recent_idac_outer, S_IRUGO,	/* RECENT outer idac */
 		cypress_touchkey_idac0_show, NULL);
-static DEVICE_ATTR(touchkey_idac3, S_IRUGO,	/* RECENT inner idac */
+static DEVICE_ATTR(touchkey_recent_idac_inner, S_IRUGO,	/* RECENT inner idac */
 		cypress_touchkey_idac1_show, NULL);
+static DEVICE_ATTR(touchkey_back_idac_outer, S_IRUGO,	/* BACK outer idac */
+		cypress_touchkey_idac2_show, NULL);
+static DEVICE_ATTR(touchkey_back_idac_inner, S_IRUGO,	/* BACK inner idac */
+		cypress_touchkey_idac3_show, NULL);
+
 static DEVICE_ATTR(touchkey_comp_idac0, S_IRUGO,
 		cypress_touchkey_comp_idac0_show, NULL);
 static DEVICE_ATTR(touchkey_comp_idac1, S_IRUGO,
@@ -1935,14 +2046,16 @@ static DEVICE_ATTR(touchkey_comp_idac2, S_IRUGO,
 		cypress_touchkey_comp_idac2_show, NULL);
 static DEVICE_ATTR(touchkey_comp_idac3, S_IRUGO,
 		cypress_touchkey_comp_idac3_show, NULL);
-static DEVICE_ATTR(touchkey_threshold, S_IRUGO,	/* RECENT inner threshold */
-		cypress_touchkey_threshold2_show, NULL);
-static DEVICE_ATTR(touchkey_threshold2, S_IRUGO,/* RECENT outer threshold */
+
+static DEVICE_ATTR(touchkey_recent_threshold_outer, S_IRUGO,	/* RECENT outer threshold */
 		cypress_touchkey_threshold_show, NULL);
-static DEVICE_ATTR(touchkey_threshold3, S_IRUGO,
+static DEVICE_ATTR(touchkey_recent_threshold_inner, S_IRUGO,	/* RECENT inner threshold */
+		cypress_touchkey_threshold2_show, NULL);
+static DEVICE_ATTR(touchkey_back_threshold_outer, S_IRUGO,	/* BACK outer threshold */
 		cypress_touchkey_threshold3_show, NULL);
-static DEVICE_ATTR(touchkey_threshold4, S_IRUGO,
+static DEVICE_ATTR(touchkey_back_threshold_inner, S_IRUGO,	/* BACK inner threshold */
 		cypress_touchkey_threshold4_show, NULL);
+
 static DEVICE_ATTR(touchkey_autocal_start, S_IRUGO | S_IWUSR | S_IWGRP,
 		NULL, cypress_touchkey_autocal_testmode);
 static DEVICE_ATTR(autocal_enable, S_IRUGO | S_IWUSR | S_IWGRP, NULL,
@@ -1979,29 +2092,31 @@ static struct attribute *touchkey_attributes[] = {
 	&dev_attr_brightness.attr,
 	&dev_attr_touch_sensitivity.attr,
 	&dev_attr_touchkey_recent.attr,
-	&dev_attr_touchkey_diff_data1.attr,
 	&dev_attr_touchkey_back.attr,
-	&dev_attr_touchkey_diff_data3.attr,
-	&dev_attr_touchkey_raw_data0.attr,
-	&dev_attr_touchkey_raw_data1.attr,
-	&dev_attr_touchkey_raw_data2.attr,
-	&dev_attr_touchkey_raw_data3.attr,
+	&dev_attr_touchkey_recent_outer.attr,
+	&dev_attr_touchkey_recent_inner.attr,
+	&dev_attr_touchkey_back_outer.attr,
+	&dev_attr_touchkey_back_inner.attr,
+	&dev_attr_touchkey_recent_raw_outer.attr,
+	&dev_attr_touchkey_recent_raw_inner.attr,
+	&dev_attr_touchkey_back_raw_outer.attr,
+	&dev_attr_touchkey_back_raw_inner.attr,
 	&dev_attr_touchkey_baseline_data0.attr,
 	&dev_attr_touchkey_baseline_data1.attr,
 	&dev_attr_touchkey_baseline_data2.attr,
 	&dev_attr_touchkey_baseline_data3.attr,
-	&dev_attr_touchkey_idac0.attr,
-	&dev_attr_touchkey_idac1.attr,
-	&dev_attr_touchkey_idac2.attr,
-	&dev_attr_touchkey_idac3.attr,
+	&dev_attr_touchkey_recent_idac_outer.attr,
+	&dev_attr_touchkey_recent_idac_inner.attr,
+	&dev_attr_touchkey_back_idac_outer.attr,
+	&dev_attr_touchkey_back_idac_inner.attr,
 	&dev_attr_touchkey_comp_idac0.attr,
 	&dev_attr_touchkey_comp_idac1.attr,
 	&dev_attr_touchkey_comp_idac2.attr,
 	&dev_attr_touchkey_comp_idac3.attr,
-	&dev_attr_touchkey_threshold.attr,
-	&dev_attr_touchkey_threshold2.attr,
-	&dev_attr_touchkey_threshold3.attr,
-	&dev_attr_touchkey_threshold4.attr,
+	&dev_attr_touchkey_recent_threshold_outer.attr,
+	&dev_attr_touchkey_recent_threshold_inner.attr,
+	&dev_attr_touchkey_back_threshold_outer.attr,
+	&dev_attr_touchkey_back_threshold_inner.attr,
 	&dev_attr_touchkey_autocal_start.attr,
 	&dev_attr_autocal_enable.attr,
 	&dev_attr_autocal_stat.attr,
@@ -2034,15 +2149,23 @@ static int load_fw_built_in(struct cypress_touchkey_info *info)
 	int ret;
 	char *fw_name;
 
-	if (info->module_ver == 0x01) {/* DreamTech */
-		fw_name = kasprintf(GFP_KERNEL, "%s/%s.fw",
-			TKEY_FW_BUILTIN_PATH, TKEY_DTECH_CYPRESS_FW_NAME);
-	} else if (info->module_ver == 0x02) { /* SEMCO module ver: 0x02 */
-		fw_name = kasprintf(GFP_KERNEL, "%s/%s.fw",
-			TKEY_FW_BUILTIN_PATH, TKEY_SEMCO02_CYPRESS_FW_NAME);
-	} else { /* SEMCO module ver: 0x03~ */
+	if (system_rev >= TKEY_MODULE_CHECK_REV) {
+		dev_info(&client->dev, "TKEY MODULE 0x06! system_rev:%x\n", system_rev);
 		fw_name = kasprintf(GFP_KERNEL, "%s/%s.fw",
 			TKEY_FW_BUILTIN_PATH, TKEY_SEMCO_CYPRESS_FW_NAME);
+	} else {
+		if (info->module_ver == 0x01) {	/* DreamTech */
+			fw_name = kasprintf(GFP_KERNEL, "%s/%s.fw",
+				TKEY_FW_BUILTIN_PATH, TKEY_DTECH_CYPRESS_FW_NAME);
+		} else if (info->module_ver == 0x02) {
+			/* SEMCO module ver: 0x02 */
+			fw_name = kasprintf(GFP_KERNEL, "%s/%s.fw",
+				TKEY_FW_BUILTIN_PATH, TKEY_SEMCO02_CYPRESS_FW_NAME);
+		} else {
+			/* SEMCO module ver: ~0x04 */
+			fw_name = kasprintf(GFP_KERNEL, "%s/%s.fw",
+				TKEY_FW_BUILTIN_PATH, TKEY_SEMCO04_CYPRESS_FW_NAME);
+		}
 	}
 
 	pr_info("%s!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n",fw_name);
@@ -2085,7 +2208,7 @@ static int load_fw_in_sdcard(struct cypress_touchkey_info *info)
 	set_fs(KERNEL_DS);
 
 	fp = filp_open(fw_name, O_RDONLY, S_IRUSR);
-	if (!fp) {
+	if (IS_ERR(fp)) {
 		dev_err(&client->dev, "%s: fail to open fw in %s\n",
 			__func__, fw_name);
 		ret = -ENOENT;
@@ -2186,12 +2309,16 @@ static int tkey_flash_fw(struct cypress_touchkey_info *info, u8 fw_path, bool fo
 			 __func__ , info->ic_fw_ver, info->src_fw_ver, info->fw_img->hdr_ver);
 
 	/* firmware version compare */
-	if ((info->ic_fw_ver >= info->src_fw_ver && !force) || info->support_fw_update == false) {
+	if ((info->ic_fw_ver == info->src_fw_ver && !force) || info->support_fw_update == false) {
 		dev_info(&client->dev, "%s : IC aleady have latest firmware (fw:%#x module:%#x)\n",
 			 __func__ , info->ic_fw_ver, info->module_ver);
 		if (info->fw_img->hdr_ver == 1)
 			info->do_checksum = true;
 		else
+			goto out;
+	} else if (info->ic_fw_ver > info->src_fw_ver) {
+		dev_info(&client->dev, "%s : IC has test firmware above phone fw(%#x,), Do not checksum!\n",
+				 __func__ , info->ic_fw_ver);
 		goto out;
 	}
 
@@ -2375,8 +2502,8 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 	info->is_powering_on = true;
 	cypress_power_onoff(info, 1);
 
-	msleep(40);
-	
+	msleep(150);
+
 	info->enabled = true;
 	ret = tkey_i2c_check(info);
 	if (ret < 0) {
@@ -2421,13 +2548,8 @@ static int __devinit cypress_touchkey_probe(struct i2c_client *client,
 #endif /* CONFIG_HAS_EARLYSUSPEND */
 
 #ifdef CONFIG_GLOVE_TOUCH
-	info->glove_wq = create_singlethread_workqueue("cypress_touchkey");
-	if (!info->glove_wq) {
-		dev_info(&client->dev, "fail to create glove workquewe.\n");
-		goto err_create_glove_wq;
-	} else {
-		INIT_WORK(&info->glove_work, cypress_touchkey_glove_work);
-	}
+	mutex_init(&info->tkey_glove_lock);
+	INIT_DELAYED_WORK(&info->glove_work, cypress_touchkey_glove_work);
 #endif
 
 #ifdef TKEY_REQUEST_FW_UPDATE
@@ -2498,8 +2620,7 @@ err_create_fw_wq:
 #endif
 #endif
 #ifdef CONFIG_GLOVE_TOUCH
-	destroy_workqueue(info->glove_wq);
-err_create_glove_wq:
+	mutex_destroy(&info->tkey_glove_lock);
 #endif
 	if (info->irq >= 0)
 		free_irq(info->irq, info);
@@ -2553,8 +2674,9 @@ static int cypress_touchkey_suspend(struct device *dev)
 #endif
 	info->is_powering_on = true;
 	disable_irq(info->irq);
-	cypress_power_onoff(info, 0);	
 	info->enabled = false;
+	cypress_power_onoff(info, 0);
+
 	return ret;
 }
 
@@ -2577,19 +2699,28 @@ static int cypress_touchkey_resume(struct device *dev)
 		info->enabled = true;
 		cypress_touchkey_auto_cal(info, false);
 	} else {
-		msleep(150);	
+		msleep(100);
+#ifdef CYPRESS_SUPPORT_DUAL_INT_MODE
+	/* CYPRESS Firmware setting interrupt type : dual or single interrupt */
+		cypress_touchkey_interrupt_set_dual(info->client);
+#endif
 		info->enabled = true;
 	}
 
 	if (touchled_cmd_reversed) {
 		touchled_cmd_reversed = 0;
-		i2c_smbus_write_byte_data(info->client,
+		ret = i2c_smbus_write_byte_data(info->client,
 				CYPRESS_GEN, touchkey_led_status);
+		if (ret < 0) {
+			dev_err(&info->client->dev,
+					"%s: i2c write error [%d]\n", __func__, ret);
+			goto out;
+		}
 		dev_info(&client->dev,
 				"%s: LED returned on\n", __func__);
 		msleep(30);
 	}
-
+out:
 	enable_irq(info->irq);
 
 	info->is_powering_on = false;

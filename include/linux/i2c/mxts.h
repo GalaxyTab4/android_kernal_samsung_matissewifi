@@ -32,14 +32,32 @@
 #include <asm/system_info.h>
 
 #if defined(CONFIG_SEC_LT03_PROJECT)
-/* default: recent key (since KK)
- * OS upgrade model: menu key */
-#define USE_MENU_TOUCHKEY
+#define USE_MENU_TOUCHKEY	/* OS upgrade model: menu key */
+#define MXT_FIRMWARE_NAME	"mXT1664S_n.fw"
+#define WORKAROUND_THRESHOLD /* Former HW revision device changes register value to reduce the RF noise */
+
+/* Only KOR */
+#if defined(CONFIG_MACH_LT03SKT) || defined(CONFIG_MACH_LT03LGT) || defined(CONFIG_MACH_LT03KTT)
+#define KOR_REVISION
 #endif
 
+#elif defined(CONFIG_SEC_PICASSO_PROJECT)
+#define MXT_FIRMWARE_NAME	"mXT1664S_n.fw"
+#define PALM_TUNING
+
+#elif defined(CONFIG_SEC_VIENNA_PROJECT)
+#define MXT_FIRMWARE_NAME	"mXT1664S_v.fw"
+
+#elif defined(CONFIG_SEC_V2_PROJECT)
+#define MXT_FIRMWARE_NAME	"mXT1664S_v2.fw"
+
+#else
+#undef USE_MENU_TOUCHKEY	/* default: recent key (since KK) */
+#define MXT_FIRMWARE_NAME	NULL
+#endif
+
+
 #define MXT_DEFAULT_FIRMWARE_NAME	"MXTS.fw"
-#define MXT_V_PROJECT_FIRMWARE_NAME	"mXT1664S_v.fw"
-#define MXT_N_PROJECT_FIRMWARE_NAME	"mXT1664S_n.fw"
 #define MXT_FIRMWARE_INKERNEL_PATH	"tsp_atmel/"
 #define MXT_MAX_FW_PATH				30
 #define MXT_FIRMWARE_UPDATE_TYPE	true
@@ -280,9 +298,9 @@ enum {
 #define MXT_REVISION_I	1	/* Support hovering */
 
 /************** Feature **************/
-#define TSP_PATCH				0
-#define TSP_BOOSTER				0
-#define MXT_TKEY_BOOSTER			0
+#define TSP_PATCH				1
+#define TSP_BOOSTER				1
+#define MXT_TKEY_BOOSTER			1
 #define TSP_SEC_FACTORY			1
 #define TSP_INFORM_CHARGER		1
 #define TSP_USE_SHAPETOUCH		1
@@ -644,8 +662,6 @@ struct mxt_data {
 	bool report_dummy_key;
 	bool ignore_menu_key;
 	bool ignore_back_key;
-	bool ignore_menu_key_by_back;
-	bool ignore_back_key_by_menu;
 	bool threshold_cmd_reversed;
 	int setdata;
 #endif

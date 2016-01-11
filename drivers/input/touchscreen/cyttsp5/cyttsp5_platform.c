@@ -1,9 +1,10 @@
 /*
  * cyttsp5_platform.c
- * Cypress TrueTouch(TM) Standard Product V5 Platform Module.
- * For use with Cypress Txx5xx parts.
+ * Cypress TrueTouch(TM) Standard Product V4 Platform Module.
+ * For use with Cypress Txx4xx parts.
  * Supported parts include:
- * TMA5XX
+ * TMA4XX
+ * TMA1036
  *
  * Copyright (C) 2013 Cypress Semiconductor
  *
@@ -21,44 +22,40 @@
  *
  */
 
-#define MT04
-
 #include <linux/device.h>
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/regulator/consumer.h>
-#ifdef MT04
-#define GPIO_TSP_nINT_SECURE	17
-#else
-#include <plat/gpio-cfg.h>
-#define GPIO_TSP_nINT_SECURE   EXYNOS5410_GPX1(6)
-#endif
 #include <linux/cyttsp5_core.h>
 #include <linux/cyttsp5_platform.h>
 
+#define GPIO_TSP_nINT_SECURE	17
+
+#if defined(CONFIG_SEC_ATLANTIC_PROJECT)
+#include <linux/of_gpio.h>
+#endif
+
 #ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_PLATFORM_FW_UPGRADE
-#include "cyttsp5_fw.h"
-//#ifdef SAMSUNG_TSP_INFO	
-#define HW_VERSION 0x01
-#define FW_VERSION 0x0200
-//#endif
-struct cyttsp5_touch_firmware cyttsp5_firmware = {
+/* #include "TSG5M_Kmini_rev_0C HW0x01FW0x0200.h" */
+#include "cyttsp5_firmware.h"
+
+static struct cyttsp5_touch_firmware cyttsp5_firmware = {
 	.img = cyttsp4_img,
 	.size = ARRAY_SIZE(cyttsp4_img),
 	.ver = cyttsp4_ver,
 	.vsize = ARRAY_SIZE(cyttsp4_ver),
-	.hw_version = HW_VERSION,
-	.fw_version = FW_VERSION
+	.hw_version = CY_HW_VERSION,
+	.fw_version = CY_FW_VERSION,
 };
-#else//CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_PLATFORM_FW_UPGRADE
+#else
 static struct cyttsp5_touch_firmware cyttsp5_firmware = {
 	.img = NULL,
 	.size = 0,
 	.ver = NULL,
 	.vsize = 0,
 };
-#endif//CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_PLATFORM_FW_UPGRADE
+#endif
 
 #ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_PLATFORM_TTCONFIG_UPGRADE
 #include "cyttsp5_params.h"
@@ -92,90 +89,70 @@ static struct cyttsp5_touch_config cyttsp5_ttconfig = {
 struct cyttsp5_loader_platform_data _cyttsp5_loader_platform_data = {
 	.fw = &cyttsp5_firmware,
 	.ttconfig = &cyttsp5_ttconfig,
-	.flags = CY_LOADER_FLAG_NONE,
+	.flags = CY_LOADER_FLAG_CALIBRATE_AFTER_FW_UPGRADE,
 };
 
 int enabled = 0;
 
-static int cyttsp5_hw_power(int on)
+#ifdef CONFIG_SEC_ATLANTIC_PROJECT
+extern int avdd_gpio;
+struct regulator *iovdd_vreg;
+#endif
+
+static int cyttsp5_hw_power(struct cyttsp5_core_platform_data *pdata, int on)
 {
-#ifdef MT04
+
+#if !defined(CONFIG_SEC_ATLANTIC_PROJECT)
+	int pwr_1p8 = pdata->pwr_1p8;
+	int pwr_3p3 = pdata->pwr_3p3;
+#endif
+
+
+#ifdef CONFIG_SEC_ATLANTIC_PROJECT
+
 	int ret;
 
-	ret = gpio_direction_output(31, on);
+        if(on){
+                if (iovdd_vreg)
+                        regulator_enable(iovdd_vreg);
+        }else{
+			if (iovdd_vreg)
+				regulator_disable(iovdd_vreg);
+        }
+
+	ret = gpio_direction_output(avdd_gpio, on);
 	if (ret) {
-		pr_err("[TKEY]%s: unable to set_direction for vdd_led [%d]\n",
-			 __func__, 31);
+		pr_err("[TSP]%s: unable to set_direction for gpio[%d] %d\n",
+			 __func__, avdd_gpio, ret);
 		return -EINVAL;
 	}
-	ret = gpio_direction_output(45, on);
-	if (ret) {
-		pr_err("[TKEY]%s: unable to set_direction for vdd_led [%d]\n",
-			 __func__, 45);
-		return -EINVAL;
-	}
-	msleep(100);
 #else
-	struct regulator *regulator_vdd;
-	struct regulator *regulator_avdd;
+	int ret;
 
-	if (enabled == on)
-		return 0;
 
-	regulator_vdd = regulator_get(NULL, "touch_1.8v");
-	if (IS_ERR(regulator_vdd)) {
-		printk(KERN_ERR "[TSP]ts_power_on : tsp_vdd regulator_get failed\n");
-		return PTR_ERR(regulator_vdd);
+	ret = gpio_direction_output(pwr_1p8, on);
+	if (ret) {
+		pr_err("[TKEY]%s: unable to set_direction for vdd_led [%d]\n",
+			 __func__, pwr_1p8);
+		return -EINVAL;
 	}
-
-	regulator_avdd = regulator_get(NULL, "tsp_avdd");
-	if (IS_ERR(regulator_avdd)) {
-		printk(KERN_ERR "[TSP]ts_power_on : tsp_avdd regulator_get failed\n");
-		regulator_put(regulator_vdd);
-		return PTR_ERR(regulator_avdd);
+	ret = gpio_direction_output(pwr_3p3, on);
+	if (ret) {
+		pr_err("[TKEY]%s: unable to set_direction for vdd_led [%d]\n",
+			 __func__, pwr_3p3);
+		return -EINVAL;
 	}
-
-	printk(KERN_INFO "[TSP] %s %s\n", __func__, on ? "on" : "off");
-
-	if (on) {
-		if (!regulator_is_enabled(regulator_vdd))
-			regulator_enable(regulator_vdd);
-		if (!regulator_is_enabled(regulator_avdd))
-			regulator_enable(regulator_avdd);
-
-		s3c_gpio_cfgpin(GPIO_TSP_nINT_SECURE, S3C_GPIO_SFN(0xf));
-		s3c_gpio_setpull(GPIO_TSP_nINT_SECURE, S3C_GPIO_PULL_NONE);
-	} else {
-		/*
-		 * TODO: If there is a case the regulator must be disabled
-		 * (e,g firmware update?), consider regulator_force_disable.
-		 */
-		if (regulator_is_enabled(regulator_vdd))
-			regulator_disable(regulator_vdd);
-		if (regulator_is_enabled(regulator_avdd))
-			regulator_disable(regulator_avdd);
-
-		s3c_gpio_cfgpin(GPIO_TSP_nINT_SECURE, S3C_GPIO_INPUT);
-		s3c_gpio_setpull(GPIO_TSP_nINT_SECURE, S3C_GPIO_PULL_NONE);
-
-		/* TODO: Delay time should be adjusted */
-		msleep(10);
-	}
-
-	enabled = on;
-	regulator_put(regulator_vdd);
-	regulator_put(regulator_avdd);
+	msleep(50);
 #endif
 	return 0;
 }
-
 
 int cyttsp5_xres(struct cyttsp5_core_platform_data *pdata,
 		struct device *dev)
 {
 	int rc;
 
-	rc = cyttsp5_hw_power(0);
+	rc = cyttsp5_hw_power(pdata, 0);
 	if (rc) {
 		dev_err(dev, "%s: Fail power down HW\n", __func__);
 		goto exit;
@@ -183,7 +160,7 @@ int cyttsp5_xres(struct cyttsp5_core_platform_data *pdata,
 
 	msleep(200);
 
-	rc = cyttsp5_hw_power(1);
+	rc = cyttsp5_hw_power(pdata, 1);
 	if (rc) {
 		dev_err(dev, "%s: Fail power up HW\n", __func__);
 		goto exit;
@@ -199,22 +176,36 @@ int cyttsp5_init(struct cyttsp5_core_platform_data *pdata,
 {
 	int irq_gpio = pdata->irq_gpio;
 	int rc = 0;
+#if !defined(CONFIG_SEC_ATLANTIC_PROJECT)
+	int pwr_1p8 = pdata->pwr_1p8;
+	int pwr_3p3 = pdata->pwr_3p3;
+ #endif
+
+#ifdef CONFIG_SEC_ATLANTIC_PROJECT
+	iovdd_vreg = regulator_get(dev,"vddo");
+        if (IS_ERR(iovdd_vreg)){
+                iovdd_vreg = NULL;
+                dev_err(dev, "[TSP] iovdd_vreg error %ld\n",
+						IS_ERR(iovdd_vreg));
+        }
+#endif
 
 	enabled = 0;
 
 	if (on) {
 		gpio_request(irq_gpio, "TSP_INT");
-	#ifdef MT04
 		gpio_direction_input(irq_gpio);
-	#else
-		s3c_gpio_cfgpin(irq_gpio, S3C_GPIO_SFN(0xf));
-		s3c_gpio_setpull(irq_gpio, S3C_GPIO_PULL_UP);
-		s5p_register_gpio_interrupt(irq_gpio);
-	#endif
-		cyttsp5_hw_power(1);
+#ifdef CONFIG_SEC_ATLANTIC_PROJECT
+		gpio_request(avdd_gpio, "TSP_AVDD_gpio");
+#else
+		gpio_request(pwr_1p8, "TSP_1p8_GPIO");
+		gpio_request(pwr_3p3, "TSP_3p3_GPIO");
+#endif
+		cyttsp5_hw_power(pdata, 1);
 	} else {
-		cyttsp5_hw_power(0);
-		gpio_free(irq_gpio);
+		cyttsp5_hw_power(pdata, 0);
+		if(!gpio_is_valid(irq_gpio))
+			gpio_free(irq_gpio);
 	}
 
 	dev_info(dev,
@@ -226,7 +217,7 @@ int cyttsp5_init(struct cyttsp5_core_platform_data *pdata,
 int cyttsp5_power(struct cyttsp5_core_platform_data *pdata,
 		int on, struct device *dev, atomic_t *ignore_irq)
 {
-	return cyttsp5_hw_power(on);
+	return cyttsp5_hw_power(pdata, on);
 }
 
 int cyttsp5_irq_stat(struct cyttsp5_core_platform_data *pdata,
@@ -235,7 +226,7 @@ int cyttsp5_irq_stat(struct cyttsp5_core_platform_data *pdata,
 	return gpio_get_value(pdata->irq_gpio);
 }
 
-#if 1 // platform data of board file
+#ifndef CONFIG_TOUCHSCREEN_CYTTSP5_DEVICETREE_SUPPORT // platform data of board file
 #include <linux/input.h>
 #include <linux/export.h>
 
@@ -244,11 +235,7 @@ int cyttsp5_irq_stat(struct cyttsp5_core_platform_data *pdata,
 
 #define CYTTSP5_HID_DESC_REGISTER 1
 
-#ifdef MT04
 #define CY_MAXX 720
-#else
-#define CY_MAXX 1080
-#endif
 #define CY_MAXY 1280
 #define CY_MINX 0
 #define CY_MINY 0
@@ -319,15 +306,19 @@ static struct cyttsp5_mt_platform_data _cyttsp5_mt_platform_data = {
 	.inp_dev_name = "sec_touchscreen",
 };
 
+#if !defined(CONFIG_SEC_ATLANTIC_PROJECT)
 static struct cyttsp5_btn_platform_data _cyttsp5_btn_platform_data = {
 	.inp_dev_name = "sec_touchkey",
 };
+#endif
 
 struct cyttsp5_platform_data _cyttsp5_platform_data = {
 	.core_pdata = &_cyttsp5_core_platform_data,
 	.mt_pdata = &_cyttsp5_mt_platform_data,
 	.loader_pdata = &_cyttsp5_loader_platform_data,
+#if !defined(CONFIG_SEC_ATLANTIC_PROJECT) && !defined(CONFIG_SEC_PATEK_PROJECT)
 	.btn_pdata = &_cyttsp5_btn_platform_data,
+#endif
 };
 
 EXPORT_SYMBOL(_cyttsp5_platform_data);

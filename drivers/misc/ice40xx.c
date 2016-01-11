@@ -173,6 +173,41 @@ static void fpga_enable(int enable_clk, int enable_rst_n)
 	}
 }
 
+static void irled_power_onoff(int onoff)
+{
+	int ret;
+	static struct regulator *reg_l19;
+
+	if (!reg_l19) {
+		reg_l19 = regulator_get(NULL, "8084_l19");
+		ret = regulator_set_voltage(reg_l19, 3300000, 3300000);
+		if (IS_ERR(reg_l19)) {
+			printk(KERN_ERR"could not get 8084_l19, rc = %ld\n",
+					PTR_ERR(reg_l19));
+			return;
+		}
+	}
+
+	if (onoff) {
+		ret = regulator_enable(reg_l19);
+		if (ret) {
+			printk(KERN_ERR"enable l19 failed, rc=%d\n", ret);
+			return;
+		}
+		printk(KERN_DEBUG"ir_led power_on is finished.\n");
+	} else {
+		if (regulator_is_enabled(reg_l19)) {
+			ret = regulator_disable(reg_l19);
+			if (ret) {
+				printk(KERN_ERR"disable l19 failed, rc=%d\n",
+						ret);
+				return;
+			}
+		}
+		printk(KERN_DEBUG"ir_led power_off is finished.\n");
+	}
+}
+
 #ifdef CONFIG_OF
 static int irda_ice40_parse_dt(struct device *dev,
 			struct irda_ice40_platform_data *pdata)
@@ -279,7 +314,7 @@ static void irda_ice40_config(void)
 		pr_err("%s: error : %d\n", __func__, rc);
 
 	rc = gpio_tlmm_config(GPIO_CFG(g_pdata->irda_irq, 0,
-				GPIO_CFG_INPUT, GPIO_CFG_PULL_UP,
+				GPIO_CFG_INPUT, GPIO_CFG_NO_PULL,
 				GPIO_CFG_2MA), 1);
 	if (rc)
 		pr_err("%s: error : %d\n", __func__, rc);
@@ -570,16 +605,15 @@ static void fw_work(struct work_struct *work)
 
 static int ir_remocon_work(struct irda_ice40_data *ir_data, int count)
 {
-
 	struct irda_ice40_data *data = ir_data;
 	struct i2c_client *client = data->client;
 	int buf_size = count;
 	int ret;
-	int actual_time;
 	int emission_time;
 	int ack_pin_onoff;
 	int ack_number;
-	ktime_t t1, t2;
+	int f_checksum;
+	int retry;
 
 	if (count_number >= 100)
 		count_number = 0;
@@ -589,6 +623,7 @@ static int ir_remocon_work(struct irda_ice40_data *ir_data, int count)
 	pr_irda("%s: total buf_size: %d\n", __func__, buf_size);
 
 	fpga_enable(1, 1);
+	irled_power_onoff(POWER_ON);
 	mutex_lock(&data->mutex);
 
 	client->addr = IRDA_I2C_ADDR;
@@ -597,55 +632,68 @@ static int ir_remocon_work(struct irda_ice40_data *ir_data, int count)
 	data->i2c_block_transfer.data[0] = (count >> 8) & 0xFF;
 	data->i2c_block_transfer.data[1] = count & 0xFF;
 	buf_size++;
-	ret = i2c_master_send(client,
-		(unsigned char *) &(data->i2c_block_transfer), buf_size);
-	if (ret < 0) {
-		dev_err(&client->dev, "%s: err1 %d\n", __func__, ret);
+	f_checksum = 0;
+	retry = 0;
+	while (!f_checksum) {
 		ret = i2c_master_send(client,
-		(unsigned char *) &(data->i2c_block_transfer), buf_size);
+				(unsigned char *) &(data->i2c_block_transfer), buf_size);
 		if (ret < 0) {
 			dev_err(&client->dev, "%s: err1 %d\n", __func__, ret);
 			ret = i2c_master_send(client,
-				data->i2c_block_transfer.data, count);
-			if (ret < 0)
-				dev_err(&client->dev, "%s: err2 %d\n",
-								__func__, ret);
+					(unsigned char *) &(data->i2c_block_transfer), buf_size);
+			if (ret < 0) {
+				dev_err(&client->dev, "%s: err1 %d\n", __func__, ret);
+				ret = i2c_master_send(client,
+						data->i2c_block_transfer.data, count);
+				if (ret < 0)
+					dev_err(&client->dev, "%s: err2 %d\n",
+							__func__, ret);
+			}
 		}
+		usleep_range(10000, 12000);
+
+		ack_pin_onoff = 0;
+
+		if (gpio_get_value(g_pdata->irda_irq)) {
+			ack_pin_onoff = 1;
+			retry++;
+		} else {
+			ack_pin_onoff = 2;
+			f_checksum = 1;
+		}
+		if (retry > 5)
+			break;
 	}
-	usleep_range(10000, 12000);
-
-	ack_pin_onoff = 0;
-
-	if (gpio_get_value(g_pdata->irda_irq)) {
-		pr_irda("%s : %d Checksum NG!\n",
-			__func__, count_number);
-		ack_pin_onoff = 1;
-	} else {
-		pr_irda("%s : %d Checksum OK!\n",
-			__func__, count_number);
-		ack_pin_onoff = 2;
+	if (ack_pin_onoff == 1)
+		pr_irda("%s : %d %d Checksum NG!\n",
+				__func__, count_number, retry);
+	else {
+		if (!retry)
+			pr_irda("%s : %d %d Checksum OK!\n",
+					__func__, count_number, retry);
+		else
+			pr_irda("%s : %d %d Checksum RE!\n",
+					__func__, count_number, retry);
 	}
 	ack_number = ack_pin_onoff;
 
 	mutex_unlock(&data->mutex);
 
-	emission_time = \
-		(1000 * (data->ir_sum) / (data->ir_freq));
+	emission_time = (1000 * (data->ir_sum) / (data->ir_freq));
+	if (emission_time > 0)
+		msleep(emission_time);
 
-	actual_time = 0;
-	t1 = ktime_get();
-	while ((gpio_get_value(g_pdata->irda_irq) == 0) &&
-				(actual_time <= emission_time)) {
-		int diff;
-		t2 = ktime_get();
-		diff = (tm(t2) - tm(t1))/1000;
-		usleep_range(10000, 20000);
-		actual_time += 10;
-		if (diff > TIME_LIMIT_MSEC)
-			break;
-	}
 	pr_irda("%s: emission_time = %d\n",
 			__func__, emission_time);
+
+	retry = 0;
+	while (!gpio_get_value(g_pdata->irda_irq)) {
+		usleep_range(100000, 120000);
+		pr_irda("%s : try to check irda_irq %d, %d\n",
+				__func__, emission_time, retry);
+		if (retry++ > 5)
+			break;
+	}
 
 	if (gpio_get_value(g_pdata->irda_irq)) {
 		pr_irda("%s : %d Sending IR OK!\n",
@@ -665,6 +713,7 @@ static int ir_remocon_work(struct irda_ice40_data *ir_data, int count)
 	data->length = 0;
 	data->operation = 0xffff;
 
+	irled_power_onoff(POWER_OFF);
 	fpga_enable(0, 0);
 
 	g_ack_number = ack_number;
@@ -680,6 +729,8 @@ static ssize_t remocon_store(struct device *dev, struct device_attribute *attr,
 	struct irda_ice40_data *data = dev_get_drvdata(dev);
 	unsigned int _data;
 	unsigned int count = 2, i = 0;
+	unsigned int c_factor = 0;
+	unsigned int temp_data = 0;
 	int ret;
 
 	pr_irda("%s ir_send called[%d]\n", __func__, __LINE__);
@@ -703,11 +754,11 @@ static ssize_t remocon_store(struct device *dev, struct device_attribute *attr,
 							= _data & 0xFF;
 				count += 3;
 			} else {
-				data->ir_sum += _data;
-				data->i2c_block_transfer.data[count++]
-						= (_data >> 8);
-				data->i2c_block_transfer.data[count++]
-						= _data & 0xFF;
+				c_factor = 1000000 / data->ir_freq;
+				temp_data = _data / c_factor;
+				data->ir_sum += temp_data;
+				data->i2c_block_transfer.data[count++] = (temp_data >> 8);
+				data->i2c_block_transfer.data[count++] = temp_data & 0xFF;
 			}
 
 			while (_data > 0) {
@@ -1327,6 +1378,13 @@ static int __devinit irda_ice40_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, data);
 #ifdef IRDA_RX_ENABLE
+	ret = switch_dev_register(&switch_irda_receive);
+	if (ret < 0) {
+		dev_err(&client->dev, "Failed to switch_dev_register\n");
+		error = ret;
+		goto err_switch_dev;
+	}
+
 	ret = request_threaded_irq(client->irq,
 					NULL, irda_irq_handler,
 					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
@@ -1344,14 +1402,7 @@ static int __devinit irda_ice40_probe(struct i2c_client *client,
 	data->miscdev.name = IR_DRIVER_NAME;
 	data->miscdev.fops = &ice40_fops;
 	data->miscdev.parent = &client->dev;
-#ifdef IRDA_RX_ENABLE
-	ret = switch_dev_register(&switch_irda_receive);
-	if (ret < 0) {
-		dev_err(&client->dev, "Failed to switch_dev_register\n");
-		error = ret;
-		goto err_switch_dev;
-	}
-#endif
+
 	ret = misc_register(&data->miscdev);
 	if (ret < 0) {
 		dev_err(&client->dev, "Device misc_register failed\n");

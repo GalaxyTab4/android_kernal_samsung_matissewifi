@@ -8,7 +8,7 @@
 #include "GMvSystem.h"
 
 //
-sint32 GMvPacketMakeHeader( uint8 *pu8Dst, EG_MV_PKT_ID ePktId, uint8 u8Arg1, uint8 u8Arg2, uint16 u16PldSize )
+sint32 GMvPacketMakeHeader( uint8 *pu8Dst, EG_MV_PKT_ID ePktId, uint16 u16Arg, uint16 u16PldSize )
 {
 	struct SGMvPktHdr *psPktHdr;
 #if defined DG_MV_PKT_PARITY_RS_10_6
@@ -24,8 +24,7 @@ sint32 GMvPacketMakeHeader( uint8 *pu8Dst, EG_MV_PKT_ID ePktId, uint8 u8Arg1, ui
 #endif
 	psPktHdr->u8SyncByte = DG_MV_PKT_SYNC_BYTE;
 	psPktHdr->u8PktId = ePktId;
-	psPktHdr->u8Arg1 = u8Arg1;
-	psPktHdr->u8Arg2 = u8Arg2;
+	psPktHdr->u16Arg = u16Arg;
 	psPktHdr->u16PldSize = u16PldSize;
 #if defined( DG_MV_PKT_PARITY_CRC16 )
 	*(uint16*)&pu8Dst[sizeof( struct SGMvPktHdr )] = GMvCrc16Encode( pu8Dst, sizeof( struct SGMvPktHdr ) );

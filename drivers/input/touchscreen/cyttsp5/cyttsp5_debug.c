@@ -268,11 +268,15 @@ static ssize_t cyttsp5_formated_output_store(struct device *dev,
 static DEVICE_ATTR(formated_output, S_IRUSR | S_IWUSR,
 	cyttsp5_formated_output_show, cyttsp5_formated_output_store);
 
-static int cyttsp5_debug_probe(struct device *dev)
+int cyttsp5_debug_probe(struct device *dev)
 {
 	struct cyttsp5_core_data *cd = dev_get_drvdata(dev);
 	struct cyttsp5_debug_data *dd;
 	int rc;
+
+	cmd = cyttsp5_get_commands();
+	if (!cmd)
+		return -EINVAL;
 
 	/* get context and debug print buffers */
 	dd = kzalloc(sizeof(*dd), GFP_KERNEL);
@@ -329,8 +333,9 @@ cyttsp5_debug_probe_alloc_failed:
 	dev_err(dev, "%s failed.\n", __func__);
 	return rc;
 }
+EXPORT_SYMBOL(cyttsp5_debug_probe);
 
-static int cyttsp5_debug_release(struct device *dev)
+int cyttsp5_debug_release(struct device *dev)
 {
 	struct cyttsp5_debug_data *dd = cyttsp5_get_debug_data(dev);
 	int rc;
@@ -349,95 +354,4 @@ cyttsp5_debug_release_exit:
 	kfree(dd);
 	return rc;
 }
-
-static char *core_ids[CY_MAX_NUM_CORE_DEVS] = {
-	CY_DEFAULT_CORE_ID,
-	NULL,
-	NULL,
-	NULL,
-	NULL
-};
-
-static int num_core_ids = 1;
-
-module_param_array(core_ids, charp, &num_core_ids, 0);
-MODULE_PARM_DESC(core_ids,
-	"Core id list of cyttsp5 core devices for debug module");
-
-static int __init cyttsp5_debug_init(void)
-{
-	struct cyttsp5_core_data *cd;
-	int rc = 0;
-	int i, j;
-
-	/* Check for invalid or duplicate core_ids */
-	for (i = 0; i < num_core_ids; i++) {
-		if (!strlen(core_ids[i])) {
-			pr_err("%s: core_id %d is empty\n",
-				__func__, i+1);
-			return -EINVAL;
-		}
-		for (j = i+1; j < num_core_ids; j++) {
-			if (!strcmp(core_ids[i], core_ids[j])) {
-				pr_err("%s: core_ids %d and %d are same\n",
-					__func__, i+1, j+1);
-				return -EINVAL;
-			}
-		}
-	}
-
-	cmd = cyttsp5_get_commands();
-	if (!cmd)
-		return -EINVAL;
-
-	for (i = 0; i < num_core_ids; i++) {
-		cd = cyttsp5_get_core_data(core_ids[i]);
-		if (!cd)
-			continue;
-
-		pr_info("%s: Registering debug module for core_id: %s\n",
-			__func__, core_ids[i]);
-		rc = cyttsp5_debug_probe(cd->dev);
-		if (rc < 0) {
-			pr_err("%s: Error, failed registering module\n",
-				__func__);
-			goto fail_unregister_devices;
-		}
-	}
-
-	pr_info("%s: Cypress TTSP Debug Driver (Built %s) rc=%d\n",
-		 __func__, CY_DRIVER_DATE, rc);
-	return 0;
-
-fail_unregister_devices:
-	for (i--; i >= 0; i--) {
-		cd = cyttsp5_get_core_data(core_ids[i]);
-		if (!cd)
-			continue;
-		cyttsp5_debug_release(cd->dev);
-		pr_info("%s: Unregistering debug module for core_id: %s\n",
-			__func__, core_ids[i]);
-	}
-	return rc;
-}
-module_init(cyttsp5_debug_init);
-
-static void __exit cyttsp5_debug_exit(void)
-{
-	struct cyttsp5_core_data *cd;
-	int i;
-
-	for (i = 0; i < num_core_ids; i++) {
-		cd = cyttsp5_get_core_data(core_ids[i]);
-		if (!cd)
-			continue;
-		cyttsp5_debug_release(cd->dev);
-		pr_info("%s: Unregistering debug module for core_id: %s\n",
-			__func__, core_ids[i]);
-	}
-}
-module_exit(cyttsp5_debug_exit);
-
-MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Cypress TrueTouch(R) Standard Product Debug Driver");
-MODULE_AUTHOR("Cypress Semiconductor <ttdrivers@cypress.com>");
+EXPORT_SYMBOL(cyttsp5_debug_release);

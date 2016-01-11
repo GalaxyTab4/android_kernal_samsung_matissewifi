@@ -11,11 +11,6 @@
  */
 
 &mdss_mdp {
-	/* Override fudge factors */
-	qcom,mdss-ab-factor = <2 1>;
-	qcom,mdss-ib-factor = <3 2>;
-	qcom,mdss-clk-factor = <5 4>;
-
 	dsi_dual_2560p_vid_right: qcom,mdss_dsi_samsung_dual_2560p_video_right {
 		qcom,mdss-dsi-panel-name = "samsung tft 2560p video mode R63319 right panel";
 		qcom,mdss-dsi-panel-controller = <&mdss_dsi0>;
@@ -29,7 +24,7 @@
 		qcom,mdss-pan-dest = "display_1";
 		qcom,mdss-pan-broadcast-mode = <1>;
 		qcom,mdss-pan-porch-values = <64 20 150 8 4 12>;  /* <HBP> <HPW> <HFP> <VBP> <VPW> <VFP> */
-		qcom,mdss-pan-underflow-clr = <0x00>;
+		qcom,mdss-pan-underflow-clr = <0xff>;
 		qcom,mdss-pan-bl-ctrl = "UNKNOWN_CTRL";
 
 		qcom,mdss-pan-dsi-mode = <0>; /* VIDEO = 0, CMD = 1*/
@@ -76,6 +71,19 @@
 					05 01 00 00 00 00 02 00 00
 					23 01 00 00 00 00 02 D6 01
 
+					/* Gamma Function */
+					29 01 00 00 00 00 1F C7 01
+						0E 15 1D 2A 38 41 51 35
+						3D 47 56 61 6A 76 01 0E
+						15 1D 2A 36 3F 4D 31 39
+						45 54 5F 68 76
+
+					/* Digital Gamma Function (1) */
+					29 01 00 00 00 00 14 C8 01
+						00 00 00 00 E8 00 00 00
+						00 00 DC 00 00 00 00 01
+						FC 00
+
 					/* CE tuning */
 					29 01 00 00 00 00 21 CA 01
 						80 C8 B9 FF FF FF A0 09
@@ -87,13 +95,13 @@
 					05 01 00 00 00 00 02 29 00
 					15 01 00 00 00 00 02 51 15];
 
-		qcom,on-cmds-dsi-state = "DSI_HS_MODE";
+		qcom,on-cmds-dsi-state = "dsi_hs_mode";
 
 		qcom,panel-off-cmds = [
 			05 01 00 00 00 00 02 00 00
 			05 01 00 00 00 00 02 00 00];
 
-		qcom,off-cmds-dsi-state = "DSI_HS_MODE";
+		qcom,off-cmds-dsi-state = "dsi_hs_mode";
 
 		samsung,panel-ce-on-cmds = [05 01 00 00 00 00 02 00 00];
 		samsung,panel-ce-off-cmds =[05 01 00 00 00 00 02 00 00];
@@ -116,7 +124,7 @@
 		qcom,mdss-pan-dest = "display_2";
 		qcom,mdss-pan-broadcast-mode = <1>;
 		qcom,mdss-pan-porch-values = <64 20 150 8 4 12>;  /* <HBP> <HPW> <HFP> <VBP> <VPW> <VFP> */
-		qcom,mdss-pan-underflow-clr = <0x00>;
+		qcom,mdss-pan-underflow-clr = <0xff>;
 
 		qcom,mdss-pan-bl-ctrl = "bl_ctrl_dcs";
 		qcom,mdss-pan-bl-levels = <1 255>;
@@ -168,6 +176,19 @@
 					05 01 00 00 00 00 02 00 00
 					23 01 00 00 00 00 02 D6 01
 
+					/* Gamma Function */
+					29 01 00 00 00 00 1F C7 01
+						0E 15 1D 2A 38 41 51 35
+						3D 47 56 61 6A 76 01 0E
+						15 1D 2A 36 3F 4D 31 39
+						45 54 5F 68 76
+
+					/* Digital Gamma Function (1) */
+					29 01 00 00 00 00 14 C8 01
+						00 00 00 00 E8 00 00 00
+						00 00 DC 00 00 00 00 01
+						FC 00
+
 					/* CE tuning */
 					29 01 00 00 00 00 21 CA 01
 						80 C8 B9 FF FF FF A0 09
@@ -180,13 +201,13 @@
 					15 01 00 00 00 00 02 51 15
 					];
 
-		qcom,on-cmds-dsi-state = "DSI_HS_MODE";
+		qcom,on-cmds-dsi-state = "dsi_hs_mode";
 
 		qcom,panel-off-cmds = [
 					05 01 00 00 14 00 02 28 00
 					05 01 00 00 32 00 02 10 00
 					];
-		qcom,off-cmds-dsi-state = "DSI_HS_MODE";
+		qcom,off-cmds-dsi-state = "dsi_hs_mode";
 
 		/* CE tuning value for debug */
 		samsung,panel-ce-on-cmds = [29 01 00 00 00 00 21

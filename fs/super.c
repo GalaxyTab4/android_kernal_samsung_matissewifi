@@ -739,6 +739,7 @@ int do_remount_sb(struct super_block *sb, int flags, void *data, int force)
 	if (flags & MS_RDONLY)
 		acct_auto_close(sb);
 	shrink_dcache_sb(sb);
+	sync_filesystem(sb);
 
 	remount_ro = (flags & MS_RDONLY) && !(sb->s_flags & MS_RDONLY);
 
@@ -753,8 +754,6 @@ int do_remount_sb(struct super_block *sb, int flags, void *data, int force)
 				return retval;
 		}
 	}
-
-	sync_filesystem(sb);
 
 	if (sb->s_op->remount_fs) {
 		retval = sb->s_op->remount_fs(sb, &flags, data);
@@ -788,7 +787,7 @@ cancel_readonly:
 	return retval;
 }
 
-static void do_emergency_remount(struct work_struct *work)
+void do_emergency_remount(struct work_struct *work)
 {
 	struct super_block *sb, *p = NULL;
 

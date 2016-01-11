@@ -10,11 +10,11 @@
  * GNU General Public License for more details.
  */
 
+#define SEC_FEATURE_USE_RT_MUTEX
+
 #define pr_fmt(fmt) "AXI: %s(): " fmt, __func__
 
-#if defined(CONFIG_SEC_K_PROJECT) || defined(CONFIG_SEC_MILLETLTE_COMMON)
-#define DEBUG_MSM_BUS_ARB_REQ
-#endif
+//#define DEBUG_MSM_BUS_ARB_REQ
 
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -27,6 +27,9 @@
 #include "msm_bus_core.h"
 #ifdef DEBUG_MSM_BUS_ARB_REQ
 #include <asm/arch_timer.h>
+#endif
+#ifdef SEC_FEATURE_USE_RT_MUTEX
+#include <linux/rtmutex.h>
 #endif
 
 #define INDEX_MASK 0x0000FFFF
@@ -49,7 +52,11 @@
 #define IS_SLAVE_VALID(slv) \
 	(((slv >= MSM_BUS_SLAVE_FIRST) && (slv <= MSM_BUS_SLAVE_LAST)) ? 1 : 0)
 
+#ifdef SEC_FEATURE_USE_RT_MUTEX
+static DEFINE_RT_MUTEX(msm_bus_lock);
+#else
 static DEFINE_MUTEX(msm_bus_lock);
+#endif
 
 /* This function uses shift operations to divide 64 bit value for higher
  * efficiency. The divisor expected are number of ports or bus-width.
@@ -539,7 +546,11 @@ uint32_t msm_bus_scale_register_client(struct msm_bus_scale_pdata *pdata)
 		return 0;
 	}
 
+#ifdef SEC_FEATURE_USE_RT_MUTEX
+	rt_mutex_lock(&msm_bus_lock);
+#else
 	mutex_lock(&msm_bus_lock);
+#endif
 	client->pdata = pdata;
 	client->curr = -1;
 	for (i = 0; i < pdata->usecase->num_paths; i++) {
@@ -595,14 +606,22 @@ uint32_t msm_bus_scale_register_client(struct msm_bus_scale_pdata *pdata)
 	}
 	msm_bus_dbg_client_data(client->pdata, MSM_BUS_DBG_REGISTER,
 		(uint32_t)client);
+#ifdef SEC_FEATURE_USE_RT_MUTEX
+	rt_mutex_unlock(&msm_bus_lock);
+#else
 	mutex_unlock(&msm_bus_lock);
+#endif
 	MSM_BUS_DBG("ret: %u num_paths: %d\n", (uint32_t)client,
 		pdata->usecase->num_paths);
 	return (uint32_t)(client);
 err:
 	kfree(client->src_pnode);
 	kfree(client);
+#ifdef SEC_FEATURE_USE_RT_MUTEX
+	rt_mutex_unlock(&msm_bus_lock);
+#else
 	mutex_unlock(&msm_bus_lock);
+#endif
 	return 0;
 }
 EXPORT_SYMBOL(msm_bus_scale_register_client);
@@ -641,8 +660,11 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 				(uint32_t)client);
 		return -ENXIO;
 	}
-
+#ifdef SEC_FEATURE_USE_RT_MUTEX
+	rt_mutex_lock(&msm_bus_lock);
+#else
 	mutex_lock(&msm_bus_lock);
+#endif
 	if (client->curr == index)
 		goto err;
 
@@ -650,7 +672,8 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 	pdata = client->pdata;
 	if (!pdata) {
 		MSM_BUS_ERR("Null pdata passed to update-request\n");
-		return -ENXIO;
+		ret = -ENXIO;
+		goto err;
 	}
 
 	if (index >= pdata->num_usecases) {
@@ -688,20 +711,23 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 		//Debug code to collect client info
 		{
 			struct msm_bus_fabric_device *fabdev_d = msm_bus_get_fabric_device(GET_FABID(src));
-			if (MSM_BUS_FAB_APPSS  == fabdev_d->id)
-			{
-				if (log_cnt >= 1000)
-					log_cnt = 0;
-				
-				log_req[log_cnt].ab = client->pdata->usecase[index].vectors[i].ab;
-				log_req[log_cnt].ib = client->pdata->usecase[index].vectors[i].ib;
-				log_req[log_cnt].src = client->pdata->usecase[index].vectors[i].src;
-				log_req[log_cnt].dst = client->pdata->usecase[index].vectors[i].dst;
-				log_req[log_cnt].cnt = arch_counter_get_cntpct(); 
-				strncpy(log_req[log_cnt].name, client->pdata->name, 19);
-				log_cnt++;
-				//printk("*** cl: %s ab: %llu ib: %llu\n", client->pdata->name, req_bw, req_clk);
-			}
+			if(likely(fabdev_d)){
+				if (MSM_BUS_FAB_APPSS  == fabdev_d->id)
+				{
+					if (log_cnt >= 1000)
+						log_cnt = 0;
+
+					log_req[log_cnt].ab = client->pdata->usecase[index].vectors[i].ab;
+					log_req[log_cnt].ib = client->pdata->usecase[index].vectors[i].ib;
+					log_req[log_cnt].src = client->pdata->usecase[index].vectors[i].src;
+					log_req[log_cnt].dst = client->pdata->usecase[index].vectors[i].dst;
+					log_req[log_cnt].cnt = arch_counter_get_cntpct();
+					strncpy(log_req[log_cnt].name, client->pdata->name, 19);
+					log_cnt++;
+					//printk("*** cl: %s ab: %llu ib: %llu\n", client->pdata->name, req_bw, req_clk);
+				}
+			} else
+				panic("check msm_bus_type structure");
 		}
 #endif
 
@@ -737,7 +763,11 @@ int msm_bus_scale_client_update_request(uint32_t cl, unsigned index)
 	bus_for_each_dev(&msm_bus_type, NULL, NULL, msm_bus_commit_fn);
 
 err:
+#ifdef SEC_FEATURE_USE_RT_MUTEX
+	rt_mutex_unlock(&msm_bus_lock);
+#else
 	mutex_unlock(&msm_bus_lock);
+#endif
 	return ret;
 }
 EXPORT_SYMBOL(msm_bus_scale_client_update_request);
@@ -877,10 +907,18 @@ void msm_bus_scale_unregister_client(uint32_t cl)
 		msm_bus_scale_client_update_request(cl, 0);
 
 	MSM_BUS_DBG("Unregistering client %d\n", cl);
+#ifdef SEC_FEATURE_USE_RT_MUTEX
+	rt_mutex_lock(&msm_bus_lock);
+#else
 	mutex_lock(&msm_bus_lock);
+#endif
 	msm_bus_scale_client_reset_pnodes(cl);
 	msm_bus_dbg_client_data(client->pdata, MSM_BUS_DBG_UNREGISTER, cl);
+#ifdef SEC_FEATURE_USE_RT_MUTEX
+	rt_mutex_unlock(&msm_bus_lock);
+#else
 	mutex_unlock(&msm_bus_lock);
+#endif
 	kfree(client->src_pnode);
 	kfree(client);
 }
