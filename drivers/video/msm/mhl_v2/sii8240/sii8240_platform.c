@@ -124,9 +124,6 @@ static struct msm_gpiomux_config msm_hdmi_ddc_configs[] = {
 };
 
 #ifdef CONFIG_ARCH_MSM8974
-extern int hdmi_hdcp_authentication_part1_global_start(void);
-extern void hdmi_hdcp_authentication_part1_global_authenticated(void);
-
 int platform_ap_hdmi_hdcp_auth(struct sii8240_data *sii8240)
 {
 	int ret = 0;
@@ -137,13 +134,14 @@ int platform_ap_hdmi_hdcp_auth(struct sii8240_data *sii8240)
 			return 0;
 		}
 		sii8240->mhl_ddc_bypass(true);
-		ret = hdmi_hdcp_authentication_part1_global_start();
+		hdcp_ctrl_global->hdcp_state = HDCP_STATE_AUTHENTICATING;
+		ret = hdmi_hdcp_authentication_part1(hdcp_ctrl_global);
 		sii8240->mhl_ddc_bypass(false);
 		if (ret) {
 			pr_err("%s: HDMI HDCP Auth Part I failed\n", __func__);
 			return ret;
 		}
-		hdmi_hdcp_authentication_part1_global_authenticated();
+		hdcp_ctrl_global->hdcp_state = HDCP_STATE_AUTHENTICATED;
 		sii8240->ap_hdcp_success = true;
 		msleep(100);
 	}
