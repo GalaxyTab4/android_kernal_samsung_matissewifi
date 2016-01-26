@@ -161,7 +161,6 @@ struct msm_compr_dec_params {
 	struct snd_dec_ddp ddp_params;
 };
 
->>>>>>> d773de7... ASoC: msm: Add support to enable audio post processing in DSP
 static int msm_compr_set_volume(struct snd_compr_stream *cstream,
 				uint32_t volume_l, uint32_t volume_r)
 {
@@ -1765,7 +1764,6 @@ static int msm_compr_audio_effects_config_get(struct snd_kcontrol *kcontrol,
 	/* dummy function */
 	return 0;
 }
-<<<<<<< HEAD
 
 static int msm_compr_dec_params_put(struct snd_kcontrol *kcontrol,
 				    struct snd_ctl_elem_value *ucontrol)
